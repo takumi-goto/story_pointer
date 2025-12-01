@@ -63,7 +63,7 @@ export class JiraClient {
         id: board.id,
         name: board.name,
         type: board.type,
-        projectKey: board.location.projectKey,
+        projectKey: board.location!.projectKey,
       }));
   }
 
