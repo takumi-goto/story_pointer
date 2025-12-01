@@ -7,13 +7,22 @@ import { formatSprintData } from "@/lib/gemini/prompts";
 import type { EstimationContext, SprintDataForPrompt } from "@/lib/ai/types";
 import type { EstimationRequest } from "@/types";
 
+// Safe wrapper for getSecret that returns undefined instead of throwing
+async function safeGetSecret(key: Parameters<typeof getSecret>[0]): Promise<string | undefined> {
+  try {
+    return await getSecret(key);
+  } catch {
+    return undefined;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Get config from headers (LocalStorage), fallback to env
-    const jiraHost = request.headers.get("X-Jira-Host") || (await getSecret("JIRA_HOST"));
-    const jiraEmail = request.headers.get("X-Jira-Email") || (await getSecret("JIRA_EMAIL"));
-    const jiraApiToken = request.headers.get("X-Jira-Api-Token") || (await getSecret("JIRA_API_TOKEN"));
-    const githubToken = request.headers.get("X-GitHub-Token") || (await getSecret("GITHUB_TOKEN"));
+    const jiraHost = request.headers.get("X-Jira-Host") || (await safeGetSecret("JIRA_HOST"));
+    const jiraEmail = request.headers.get("X-Jira-Email") || (await safeGetSecret("JIRA_EMAIL"));
+    const jiraApiToken = request.headers.get("X-Jira-Api-Token") || (await safeGetSecret("JIRA_API_TOKEN"));
+    const githubToken = request.headers.get("X-GitHub-Token") || (await safeGetSecret("GITHUB_TOKEN"));
     const aiModelId = request.headers.get("X-AI-Model-Id") || DEFAULT_MODEL_ID;
 
     // AI API Keys from headers, fallback to env
@@ -34,13 +43,13 @@ export async function POST(request: NextRequest) {
 
     switch (provider) {
       case "gemini":
-        apiKey = geminiApiKeyFromHeader || (await getSecret("GEMINI_API_KEY"));
+        apiKey = geminiApiKeyFromHeader || (await safeGetSecret("GEMINI_API_KEY"));
         break;
       case "claude":
-        apiKey = anthropicApiKeyFromHeader || (await getSecret("ANTHROPIC_API_KEY"));
+        apiKey = anthropicApiKeyFromHeader || (await safeGetSecret("ANTHROPIC_API_KEY"));
         break;
       case "openai":
-        apiKey = openaiApiKeyFromHeader || (await getSecret("OPENAI_API_KEY"));
+        apiKey = openaiApiKeyFromHeader || (await safeGetSecret("OPENAI_API_KEY"));
         break;
     }
 
