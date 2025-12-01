@@ -8,6 +8,8 @@ interface Secrets {
   GITHUB_TOKEN?: string;
   GITHUB_ORG?: string;
   GEMINI_API_KEY?: string;
+  ANTHROPIC_API_KEY?: string;
+  OPENAI_API_KEY?: string;
   SESSION_SECRET?: string;
 }
 
@@ -44,6 +46,8 @@ function getSecretsFromEnv(): Secrets {
     GITHUB_TOKEN: process.env.GITHUB_TOKEN,
     GITHUB_ORG: process.env.GITHUB_ORG,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     SESSION_SECRET: process.env.SESSION_SECRET,
   };
 }
