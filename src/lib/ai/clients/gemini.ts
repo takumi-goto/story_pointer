@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { AIEstimationClient, EstimationContext, AIProvider } from "../types";
-import type { EstimationResult, StoryPoint, BaselineTicket, SimilarTicket, PointCandidate } from "@/types";
+import type { EstimationResult, StoryPoint, WorkTypeBreakdown, AILeverage, RaisePermissionCheck } from "@/types";
 import { DEFAULT_PROMPT, buildPrompt } from "@/lib/gemini/prompts";
 import { isValidStoryPoint } from "@/lib/utils/fibonacci";
 
@@ -14,6 +14,19 @@ interface GeminiEstimationResponse {
     points: number;
     similarityScore: number;
     similarityReason: string[];
+  };
+  workTypeBreakdown?: {
+    T1_small_existing_change: number;
+    T2_pattern_reuse: number;
+    T3_new_logic_design: number;
+    T4_cross_system_impact: number;
+    T5_investigation_heavy: number;
+    T6_data_backfill_heavy: number;
+  };
+  aiLeverage?: {
+    score: number;
+    appliedReduction: string;
+    reductionReason: string;
   };
   similarTickets: Array<{
     key: string;
@@ -40,6 +53,11 @@ interface GeminiEstimationResponse {
     points: number;
     candidateReason: string;
   }>;
+  raisePermissionCheck?: {
+    A: { passed: boolean; evidence: string };
+    B: { passed: boolean; evidence: string };
+    C: { passed: boolean; evidence: string };
+  };
 }
 
 export class GeminiEstimationClient implements AIEstimationClient {
@@ -92,12 +110,38 @@ export class GeminiEstimationClient implements AIEstimationClient {
         similarityReason: [],
       };
 
+      // Build workTypeBreakdown
+      const workTypeBreakdown: WorkTypeBreakdown | undefined = parsed.workTypeBreakdown ? {
+        T1_small_existing_change: parsed.workTypeBreakdown.T1_small_existing_change || 0,
+        T2_pattern_reuse: parsed.workTypeBreakdown.T2_pattern_reuse || 0,
+        T3_new_logic_design: parsed.workTypeBreakdown.T3_new_logic_design || 0,
+        T4_cross_system_impact: parsed.workTypeBreakdown.T4_cross_system_impact || 0,
+        T5_investigation_heavy: parsed.workTypeBreakdown.T5_investigation_heavy || 0,
+        T6_data_backfill_heavy: parsed.workTypeBreakdown.T6_data_backfill_heavy || 0,
+      } : undefined;
+
+      // Build aiLeverage
+      const aiLeverage: AILeverage | undefined = parsed.aiLeverage ? {
+        score: parsed.aiLeverage.score || 0,
+        appliedReduction: (parsed.aiLeverage.appliedReduction === "down_one_level" ? "down_one_level" : "none") as "none" | "down_one_level",
+        reductionReason: parsed.aiLeverage.reductionReason || "",
+      } : undefined;
+
+      // Build raisePermissionCheck
+      const raisePermissionCheck: RaisePermissionCheck | undefined = parsed.raisePermissionCheck ? {
+        A: { passed: parsed.raisePermissionCheck.A?.passed || false, evidence: parsed.raisePermissionCheck.A?.evidence || "" },
+        B: { passed: parsed.raisePermissionCheck.B?.passed || false, evidence: parsed.raisePermissionCheck.B?.evidence || "" },
+        C: { passed: parsed.raisePermissionCheck.C?.passed || false, evidence: parsed.raisePermissionCheck.C?.evidence || "" },
+      } : undefined;
+
       return {
         estimatedPoints,
         reasoning: parsed.reasoning || "",
         shouldSplit: parsed.shouldSplit || estimatedPoints >= 13,
         splitSuggestion: parsed.splitSuggestion || "",
         baseline,
+        workTypeBreakdown,
+        aiLeverage,
         similarTickets: (parsed.similarTickets || []).filter((ticket) => ticket != null).map((ticket) => ({
           key: ticket.key || "N/A",
           points: ticket.points || 0,
@@ -130,6 +174,7 @@ export class GeminiEstimationClient implements AIEstimationClient {
           points: candidate.points || 0,
           candidateReason: candidate.candidateReason || "",
         })),
+        raisePermissionCheck,
       };
     } catch (error) {
       console.error("Gemini estimation error:", error);

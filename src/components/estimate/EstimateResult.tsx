@@ -8,6 +8,7 @@ import Button from "@/components/ui/Button";
 import SimilarTicketsSection from "./SimilarTicketsSection";
 import PointCandidates from "./PointCandidates";
 import SplitSuggestion from "./SplitSuggestion";
+import AILeverageSection from "./AILeverageSection";
 import { getPointColor, getPointDescription } from "@/lib/utils/fibonacci";
 import type { EstimationResult, StoryPoint } from "@/types";
 
@@ -161,6 +162,20 @@ export default function EstimateResult({ result, ticketKey, ticketSummary }: Est
         {/* Split Suggestion */}
         {result.shouldSplit && result.splitSuggestion && (
           <SplitSuggestion suggestion={result.splitSuggestion} />
+        )}
+
+        {/* AI Leverage Analysis */}
+        {(result.workTypeBreakdown || result.aiLeverage) && (
+          <Card>
+            <CardTitle>AI効率分析</CardTitle>
+            <CardDescription className="mb-4">
+              作業タイプとAIレバレッジによるポイント補正
+            </CardDescription>
+            <AILeverageSection
+              workTypeBreakdown={result.workTypeBreakdown}
+              aiLeverage={result.aiLeverage}
+            />
+          </Card>
         )}
 
         {/* Reasoning */}
