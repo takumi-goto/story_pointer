@@ -1,4 +1,4 @@
-import type { GitHubApiPullRequest, GitHubApiSearchResponse } from "./types";
+import type { GitHubApiPullRequest, GitHubApiSearchResponse, GitHubApiReview } from "./types";
 import type { GitHubPullRequest } from "@/types";
 import { calculateDaysBetween } from "@/lib/utils/date";
 
@@ -34,7 +34,7 @@ export class GitHubClient {
     return response.json();
   }
 
-  private mapPullRequest(pr: GitHubApiPullRequest): GitHubPullRequest {
+  private mapPullRequest(pr: GitHubApiPullRequest, approvedAt?: string): GitHubPullRequest {
     const createdAt = pr.created_at;
     const mergedAt = pr.merged_at;
 
@@ -49,14 +49,30 @@ export class GitHubClient {
       deletions: pr.deletions,
       createdAt,
       mergedAt: mergedAt || undefined,
-      daysToMerge: mergedAt ? calculateDaysBetween(createdAt, mergedAt) : undefined,
+      approvedAt,
+      daysToApprove: approvedAt ? calculateDaysBetween(createdAt, approvedAt) : undefined,
       author: pr.user.login,
     };
   }
 
+  private async getFirstApprovalDate(owner: string, repo: string, prNumber: number): Promise<string | undefined> {
+    try {
+      const reviews = await this.fetch<GitHubApiReview[]>(`/repos/${owner}/${repo}/pulls/${prNumber}/reviews`);
+      const approvals = reviews
+        .filter(r => r.state === "APPROVED")
+        .sort((a, b) => new Date(a.submitted_at).getTime() - new Date(b.submitted_at).getTime());
+      return approvals[0]?.submitted_at;
+    } catch {
+      return undefined;
+    }
+  }
+
   async getPullRequest(owner: string, repo: string, prNumber: number): Promise<GitHubPullRequest> {
-    const pr = await this.fetch<GitHubApiPullRequest>(`/repos/${owner}/${repo}/pulls/${prNumber}`);
-    return this.mapPullRequest(pr);
+    const [pr, approvedAt] = await Promise.all([
+      this.fetch<GitHubApiPullRequest>(`/repos/${owner}/${repo}/pulls/${prNumber}`),
+      this.getFirstApprovalDate(owner, repo, prNumber),
+    ]);
+    return this.mapPullRequest(pr, approvedAt);
   }
 
   async searchPullRequests(query: string): Promise<GitHubPullRequest[]> {

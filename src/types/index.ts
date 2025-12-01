@@ -66,7 +66,8 @@ export interface GitHubPullRequest {
   deletions: number;
   createdAt: string;
   mergedAt?: string;
-  daysToMerge?: number;
+  approvedAt?: string;
+  daysToApprove?: number;
   author: string;
 }
 

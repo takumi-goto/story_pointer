@@ -33,9 +33,7 @@ export interface SprintDataForPrompt {
       url: string;
       fileCount: number;
       commitCount: number;
-      additions?: number;
-      deletions?: number;
-      daysToMerge?: number;
+      daysToApprove?: number;
     }>;
   }>;
 }

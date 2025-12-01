@@ -50,3 +50,10 @@ export interface GitHubApiCommit {
     };
   };
 }
+
+export interface GitHubApiReview {
+  id: number;
+  user: GitHubApiUser;
+  state: "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "DISMISSED" | "PENDING";
+  submitted_at: string;
+}
