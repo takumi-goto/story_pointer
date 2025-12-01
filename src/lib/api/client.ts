@@ -71,11 +71,12 @@ export function getAuthenticatedFetch() {
 }
 
 // React hook for use in components
+// Note: Uses getState() to read state at call time, ensuring hydrated values from localStorage
 export function useAuthenticatedFetch() {
-  const apiKeysState = useApiKeysStore();
-  const settingsState = useSettingsStore();
-
   return async (url: string, options: FetchOptions = {}) => {
+    // Read state at call time (not render time) to ensure hydrated values
+    const apiKeysState = useApiKeysStore.getState();
+    const settingsState = useSettingsStore.getState();
     const { includeGitHub, ...fetchOptions } = options;
 
     const headers = new Headers(fetchOptions.headers);
