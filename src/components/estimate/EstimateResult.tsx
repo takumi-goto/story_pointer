@@ -1,6 +1,10 @@
 "use client";
 
+import { useRef, useState } from "react";
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
 import Card, { CardTitle, CardDescription } from "@/components/ui/Card";
+import Button from "@/components/ui/Button";
 import ContributionRadar from "./ContributionRadar";
 import ReferenceTickets from "./ReferenceTickets";
 import SplitSuggestion from "./SplitSuggestion";
@@ -14,74 +18,178 @@ interface EstimateResultProps {
 }
 
 export default function EstimateResult({ result, ticketKey, ticketSummary }: EstimateResultProps) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleDownloadPDF = async () => {
+    if (!contentRef.current) return;
+
+    setIsExporting(true);
+
+    try {
+      const canvas = await html2canvas(contentRef.current, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: "#f9fafb",
+      });
+
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+      const ratio = Math.min(pdfWidth / imgWidth, pdfHeight / imgHeight);
+      const imgX = (pdfWidth - imgWidth * ratio) / 2;
+      const imgY = 10;
+
+      // Handle multi-page if content is too long
+      const scaledHeight = imgHeight * ratio;
+      const pageHeight = pdfHeight - 20;
+
+      if (scaledHeight <= pageHeight) {
+        pdf.addImage(imgData, "PNG", imgX, imgY, imgWidth * ratio, scaledHeight);
+      } else {
+        let remainingHeight = scaledHeight;
+        let sourceY = 0;
+        let pageNum = 0;
+
+        while (remainingHeight > 0) {
+          if (pageNum > 0) {
+            pdf.addPage();
+          }
+
+          const sliceHeight = Math.min(pageHeight, remainingHeight);
+          const sourceSliceHeight = sliceHeight / ratio;
+
+          const tempCanvas = document.createElement("canvas");
+          tempCanvas.width = imgWidth;
+          tempCanvas.height = sourceSliceHeight;
+          const tempCtx = tempCanvas.getContext("2d");
+
+          if (tempCtx) {
+            tempCtx.drawImage(
+              canvas,
+              0, sourceY,
+              imgWidth, sourceSliceHeight,
+              0, 0,
+              imgWidth, sourceSliceHeight
+            );
+
+            const sliceData = tempCanvas.toDataURL("image/png");
+            pdf.addImage(sliceData, "PNG", imgX, imgY, imgWidth * ratio, sliceHeight);
+          }
+
+          sourceY += sourceSliceHeight;
+          remainingHeight -= pageHeight;
+          pageNum++;
+        }
+      }
+
+      const filename = `${ticketKey}_estimation_${new Date().toISOString().split("T")[0]}.pdf`;
+      pdf.save(filename);
+    } catch (error) {
+      console.error("PDF export failed:", error);
+      alert("PDFの生成に失敗しました");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      {/* Main Estimation Result */}
-      <Card>
-        <div className="flex items-start justify-between">
-          <div>
-            <CardTitle>推定結果</CardTitle>
-            <CardDescription className="mt-1">
-              {ticketKey}: {ticketSummary}
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500">信頼度:</span>
-            <span className={`text-sm font-medium ${
-              result.confidence >= 70 ? "text-green-600" :
-              result.confidence >= 40 ? "text-yellow-600" : "text-red-600"
-            }`}>
-              {result.confidence}%
-            </span>
-          </div>
-        </div>
+      {/* Download Button */}
+      <div className="flex justify-end">
+        <Button
+          variant="outline"
+          onClick={handleDownloadPDF}
+          disabled={isExporting}
+          isLoading={isExporting}
+        >
+          {isExporting ? "PDF生成中..." : "PDFでダウンロード"}
+        </Button>
+      </div>
 
-        <div className="mt-6 flex items-center gap-6">
-          <div className="text-center">
-            <div className={`inline-flex items-center justify-center w-24 h-24 rounded-full text-3xl font-bold ${getPointColor(result.estimatedPoints)}`}>
-              {result.estimatedPoints}
-            </div>
-            <div className="mt-2 text-sm text-gray-600">ストーリーポイント</div>
-          </div>
-
-          <div className="flex-1">
-            <p className="text-sm text-gray-500">
-              {getPointDescription(result.estimatedPoints as StoryPoint)}
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      {/* Split Suggestion */}
-      {result.shouldSplit && result.splitSuggestion && (
-        <SplitSuggestion suggestion={result.splitSuggestion} />
-      )}
-
-      {/* Reasoning */}
-      <Card>
-        <CardTitle>推定理由</CardTitle>
-        <p className="mt-4 text-gray-700 whitespace-pre-wrap">{result.reasoning}</p>
-      </Card>
-
-      {/* Contribution Factors */}
-      <Card>
-        <CardTitle>分析要因の寄与率</CardTitle>
-        <CardDescription className="mb-4">
-          各分析観点がポイント推定にどの程度影響したかを示します
-        </CardDescription>
-        <ContributionRadar factors={result.contributionFactors} />
-      </Card>
-
-      {/* Reference Tickets and PRs */}
-      {result.references.length > 0 && (
+      {/* Content to be exported */}
+      <div ref={contentRef} className="space-y-6">
+        {/* Main Estimation Result */}
         <Card>
-          <CardTitle>参考にした過去のデータ</CardTitle>
-          <CardDescription className="mb-4">
-            寄与率が高いものほどポイント推定に強く影響しています
-          </CardDescription>
-          <ReferenceTickets references={result.references} />
+          <div className="flex items-start justify-between">
+            <div>
+              <CardTitle>推定結果</CardTitle>
+              <CardDescription className="mt-1">
+                {ticketKey}: {ticketSummary}
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">信頼度:</span>
+              <span className={`text-sm font-medium ${
+                result.confidence >= 70 ? "text-green-600" :
+                result.confidence >= 40 ? "text-yellow-600" : "text-red-600"
+              }`}>
+                {result.confidence}%
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-6 flex items-center gap-6">
+            <div className="text-center">
+              <div className={`inline-flex items-center justify-center w-24 h-24 rounded-full text-3xl font-bold ${getPointColor(result.estimatedPoints)}`}>
+                {result.estimatedPoints}
+              </div>
+              <div className="mt-2 text-sm text-gray-600">ストーリーポイント</div>
+            </div>
+
+            <div className="flex-1">
+              <p className="text-sm text-gray-500">
+                {getPointDescription(result.estimatedPoints as StoryPoint)}
+              </p>
+            </div>
+          </div>
         </Card>
-      )}
+
+        {/* Split Suggestion */}
+        {result.shouldSplit && result.splitSuggestion && (
+          <SplitSuggestion suggestion={result.splitSuggestion} />
+        )}
+
+        {/* Reasoning */}
+        <Card>
+          <CardTitle>推定理由</CardTitle>
+          <p className="mt-4 text-gray-700 whitespace-pre-wrap">{result.reasoning}</p>
+        </Card>
+
+        {/* Contribution Factors */}
+        <Card>
+          <CardTitle>分析要因の寄与率</CardTitle>
+          <CardDescription className="mb-4">
+            各分析観点がポイント推定にどの程度影響したかを示します
+          </CardDescription>
+          <ContributionRadar factors={result.contributionFactors} />
+        </Card>
+
+        {/* Reference Tickets and PRs */}
+        {result.references.length > 0 && (
+          <Card>
+            <CardTitle>参考にした過去のデータ</CardTitle>
+            <CardDescription className="mb-4">
+              寄与率が高いものほどポイント推定に強く影響しています
+            </CardDescription>
+            <ReferenceTickets references={result.references} />
+          </Card>
+        )}
+
+        {/* Footer for PDF */}
+        <div className="text-center text-xs text-gray-400 pt-4">
+          Generated by Story Pointer on {new Date().toLocaleDateString("ja-JP")}
+        </div>
+      </div>
     </div>
   );
 }

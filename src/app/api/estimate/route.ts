@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
     const enhancedResult = {
       ...result,
       references: result.references.map(ref => {
-        if (ref.type === "ticket" && !ref.url.startsWith("http")) {
+        if (ref.type === "ticket" && (!ref.url || !ref.url.startsWith("http"))) {
           return {
             ...ref,
             url: jiraClient.getIssueUrl(ref.key),
