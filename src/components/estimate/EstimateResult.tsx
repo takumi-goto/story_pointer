@@ -28,18 +28,21 @@ export default function EstimateResult({ result, ticketKey, ticketSummary }: Est
     setIsExporting(true);
 
     try {
+      // Lower scale and use JPEG for smaller file size
       const canvas = await html2canvas(contentRef.current, {
-        scale: 2,
+        scale: 1.5,
         useCORS: true,
         logging: false,
         backgroundColor: "#f9fafb",
       });
 
-      const imgData = canvas.toDataURL("image/png");
+      // Use JPEG with compression (quality 0.7) instead of PNG
+      const imgData = canvas.toDataURL("image/jpeg", 0.7);
       const pdf = new jsPDF({
         orientation: "portrait",
         unit: "mm",
         format: "a4",
+        compress: true,
       });
 
       const pdfWidth = pdf.internal.pageSize.getWidth();
@@ -55,7 +58,7 @@ export default function EstimateResult({ result, ticketKey, ticketSummary }: Est
       const pageHeight = pdfHeight - 20;
 
       if (scaledHeight <= pageHeight) {
-        pdf.addImage(imgData, "PNG", imgX, imgY, imgWidth * ratio, scaledHeight);
+        pdf.addImage(imgData, "JPEG", imgX, imgY, imgWidth * ratio, scaledHeight);
       } else {
         let remainingHeight = scaledHeight;
         let sourceY = 0;
@@ -83,8 +86,8 @@ export default function EstimateResult({ result, ticketKey, ticketSummary }: Est
               imgWidth, sourceSliceHeight
             );
 
-            const sliceData = tempCanvas.toDataURL("image/png");
-            pdf.addImage(sliceData, "PNG", imgX, imgY, imgWidth * ratio, sliceHeight);
+            const sliceData = tempCanvas.toDataURL("image/jpeg", 0.7);
+            pdf.addImage(sliceData, "JPEG", imgX, imgY, imgWidth * ratio, sliceHeight);
           }
 
           sourceY += sourceSliceHeight;
