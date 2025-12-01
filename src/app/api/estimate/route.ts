@@ -83,79 +83,77 @@ export async function POST(request: NextRequest) {
     // Fetch sprint data with tickets
     const sprints = await jiraClient.getSprintsWithTickets(boardId, sprintCount || 10);
 
-    // Fetch PR data for each ticket if GitHub is configured
-    const sprintDataWithPRs: Array<{
-      name: string;
-      tickets: Array<{
-        key: string;
-        summary: string;
-        description?: string;
-        storyPoints?: number;
-        daysToComplete?: number;
-      }>;
-      pullRequests: Map<string, Array<{
-        url: string;
-        fileCount: number;
-        commitCount: number;
-        daysToMerge?: number;
-      }>>;
-    }> = [];
+    // Fetch PR data for each ticket if GitHub is configured (parallelized for speed)
+    const sprintDataWithPRs = await Promise.all(
+      sprints.map(async (sprint) => {
+        const prMap = new Map<string, Array<{
+          url: string;
+          fileCount: number;
+          commitCount: number;
+          daysToMerge?: number;
+        }>>();
 
-    for (const sprint of sprints) {
-      const prMap = new Map<string, Array<{
-        url: string;
-        fileCount: number;
-        commitCount: number;
-        daysToMerge?: number;
-      }>>();
+        if (githubClient) {
+          // Parallelize dev info fetches for all tickets in the sprint
+          const ticketPrResults = await Promise.all(
+            sprint.tickets.map(async (ticket) => {
+              try {
+                const devInfo = await jiraClient.getDevInfo(ticket.key);
+                const prUrls: string[] = [];
 
-      if (githubClient) {
-        for (const ticket of sprint.tickets) {
-          try {
-            // Try to get PR info from Jira dev panel first
-            const devInfo = await jiraClient.getDevInfo(ticket.key);
-            const prUrls: string[] = [];
-
-            if (devInfo?.detail) {
-              for (const detail of devInfo.detail) {
-                for (const repo of detail.repositories) {
-                  for (const pr of repo.pullRequests) {
-                    prUrls.push(pr.url);
+                if (devInfo?.detail) {
+                  for (const detail of devInfo.detail) {
+                    for (const repo of detail.repositories) {
+                      for (const pr of repo.pullRequests) {
+                        prUrls.push(pr.url);
+                      }
+                    }
                   }
                 }
-              }
-            }
 
-            if (prUrls.length > 0) {
-              const prs = await githubClient.getPullRequestsFromUrls(prUrls);
-              prMap.set(ticket.key, prs.map(pr => ({
-                url: pr.url,
-                fileCount: pr.fileCount,
-                commitCount: pr.commitCount,
-                daysToMerge: pr.daysToMerge,
-              })));
+                if (prUrls.length > 0) {
+                  const prs = await githubClient.getPullRequestsFromUrls(prUrls);
+                  return {
+                    ticketKey: ticket.key,
+                    prs: prs.map(pr => ({
+                      url: pr.url,
+                      fileCount: pr.fileCount,
+                      commitCount: pr.commitCount,
+                      daysToMerge: pr.daysToMerge,
+                    })),
+                  };
+                }
+              } catch (error) {
+                console.error(`Failed to fetch PRs for ${ticket.key}:`, error);
+              }
+              return null;
+            })
+          );
+
+          // Populate prMap from results
+          for (const result of ticketPrResults) {
+            if (result) {
+              prMap.set(result.ticketKey, result.prs);
             }
-          } catch (error) {
-            console.error(`Failed to fetch PRs for ${ticket.key}:`, error);
           }
         }
-      }
 
-      sprintDataWithPRs.push({
-        name: sprint.name,
-        // Exclude target ticket to avoid bias
-        tickets: sprint.tickets
-          .filter(t => t.key !== ticketKey)
-          .map(t => ({
-            key: t.key,
-            summary: t.summary,
-            description: typeof t.description === "string" ? t.description : undefined,
-            storyPoints: t.storyPoints,
-            daysToComplete: t.daysToComplete,
-          })),
-        pullRequests: prMap,
-      });
-    }
+        return {
+          name: sprint.name,
+          // Exclude target ticket to avoid bias
+          tickets: sprint.tickets
+            .filter(t => t.key !== ticketKey)
+            .map(t => ({
+              key: t.key,
+              summary: t.summary,
+              description: typeof t.description === "string" ? t.description : undefined,
+              storyPoints: t.storyPoints,
+              daysToComplete: t.daysToComplete,
+            })),
+          pullRequests: prMap,
+        };
+      })
+    );
 
     // Format data for AI
     const formattedSprintData: SprintDataForPrompt[] = formatSprintData(sprintDataWithPRs);

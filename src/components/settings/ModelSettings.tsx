@@ -38,7 +38,25 @@ export default function ModelSettings() {
         body: JSON.stringify({ modelId: inputValue.trim() }),
       });
 
-      const data = await response.json();
+      // Get response text first for debugging
+      const responseText = await response.text();
+      console.log("[ModelSettings] Response status:", response.status);
+      console.log("[ModelSettings] Response body:", responseText);
+
+      if (!responseText) {
+        setStatus("error");
+        setMessage(`サーバーからの応答が空です (status: ${response.status})`);
+        return;
+      }
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        setStatus("error");
+        setMessage(`不正な応答: ${responseText.substring(0, 100)}`);
+        return;
+      }
 
       if (data.success) {
         setStatus("success");
@@ -46,11 +64,12 @@ export default function ModelSettings() {
         setAiModelId(inputValue.trim());
       } else {
         setStatus("error");
-        setMessage(data.error);
+        setMessage(data.error || "不明なエラー");
       }
     } catch (error) {
+      console.error("[ModelSettings] Error:", error);
       setStatus("error");
-      setMessage("検証中にエラーが発生しました");
+      setMessage(`検証中にエラーが発生しました: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 

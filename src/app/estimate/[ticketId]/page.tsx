@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Suspense, use } from "react";
+import { useEffect, useState, Suspense, use, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Header from "@/components/layout/Header";
 import Card from "@/components/ui/Card";
@@ -11,6 +11,9 @@ import ApiKeyGuard from "@/components/auth/ApiKeyGuard";
 import { useSettingsStore } from "@/store/settings";
 import { useAuthenticatedFetch } from "@/lib/api/client";
 import type { EstimationResult } from "@/types";
+
+const POLL_INTERVAL = 2000; // 2 seconds
+const MAX_POLL_ATTEMPTS = 150; // 5 minutes max (150 * 2s)
 
 function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) {
   const { ticketId } = use(params);
@@ -23,11 +26,118 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [progress, setProgress] = useState<string>("開始中...");
+  const pollCountRef = useRef(0);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const ticketKey = searchParams.get("key") || ticketId;
   const ticketSummary = searchParams.get("summary") || "";
   const ticketDescription = searchParams.get("description") || "";
   const boardId = searchParams.get("boardId") || "";
+
+  // Poll for job status
+  const pollJobStatus = useCallback(async (jobId: string): Promise<void> => {
+    pollCountRef.current++;
+
+    if (pollCountRef.current > MAX_POLL_ATTEMPTS) {
+      throw new Error("タイムアウト: 処理に時間がかかりすぎています。後でもう一度お試しください。");
+    }
+
+    const response = await authFetch(`/api/estimate/status/${jobId}`);
+    const responseText = await response.text();
+
+    if (!responseText) {
+      // Empty response, server might be restarting, retry
+      await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+      return pollJobStatus(jobId);
+    }
+
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      // Invalid JSON, retry
+      await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+      return pollJobStatus(jobId);
+    }
+
+    if (data.status === "completed") {
+      setResult(data.data as EstimationResult);
+      setIsLoading(false);
+      return;
+    }
+
+    if (data.status === "error") {
+      throw new Error(data.error || "推定に失敗しました");
+    }
+
+    // Still processing, update progress and poll again
+    if (data.progress) {
+      setProgress(data.progress);
+    }
+
+    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+    return pollJobStatus(jobId);
+  }, [authFetch]);
+
+  const runEstimation = useCallback(async () => {
+    // Cancel any existing polling
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+
+    setIsLoading(true);
+    setError(null);
+    setProgress("ジョブを開始中...");
+    pollCountRef.current = 0;
+
+    try {
+      // Start the estimation job
+      const startResponse = await authFetch("/api/estimate/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ticketKey,
+          ticketSummary,
+          ticketDescription,
+          boardId: parseInt(boardId),
+          sprintCount,
+          customPrompt,
+        }),
+        includeGitHub: true,
+      });
+
+      const startResponseText = await startResponse.text();
+      if (!startResponseText) {
+        throw new Error("サーバーからの応答が空です");
+      }
+
+      let startData;
+      try {
+        startData = JSON.parse(startResponseText);
+      } catch {
+        throw new Error(`不正な応答: ${startResponseText.substring(0, 100)}`);
+      }
+
+      if (!startData.success || !startData.jobId) {
+        throw new Error(startData.error || "ジョブの開始に失敗しました");
+      }
+
+      setProgress("処理中...");
+
+      // Poll for results
+      await pollJobStatus(startData.jobId);
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        return; // Cancelled, ignore
+      }
+      setError(err instanceof Error ? err.message : "Estimation failed");
+      setIsLoading(false);
+    }
+  }, [authFetch, ticketKey, ticketSummary, ticketDescription, boardId, sprintCount, customPrompt, pollJobStatus]);
 
   useEffect(() => {
     if (!boardId) {
@@ -37,6 +147,12 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
     }
 
     runEstimation();
+
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
   }, [ticketKey, boardId]);
 
   // Track elapsed time during loading
@@ -53,41 +169,6 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
 
     return () => clearInterval(interval);
   }, [isLoading]);
-
-  const runEstimation = async () => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await authFetch("/api/estimate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ticketKey,
-          ticketSummary,
-          ticketDescription,
-          boardId: parseInt(boardId),
-          sprintCount,
-          customPrompt,
-        }),
-        includeGitHub: true,
-      });
-
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.error || "Estimation failed");
-      }
-
-      setResult(data.data as EstimationResult);
-      setIsLoading(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Estimation failed");
-      setIsLoading(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -114,8 +195,8 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
               <p className="text-gray-600">
                 AIがストーリーポイントを推定中です...
               </p>
-              <p className="text-sm text-gray-400">
-                過去のスプリントデータを分析しています
+              <p className="text-sm text-gray-500">
+                {progress}
               </p>
               <p className="text-sm text-gray-500 font-mono">
                 経過時間: {Math.floor(elapsedTime / 60)}:{String(elapsedTime % 60).padStart(2, "0")}

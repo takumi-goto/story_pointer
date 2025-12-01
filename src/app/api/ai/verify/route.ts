@@ -6,7 +6,15 @@ export async function POST(request: NextRequest) {
   let modelId: string | undefined;
 
   try {
-    const body = await request.json();
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json(
+        { success: false, error: "リクエストボディの解析に失敗しました" },
+        { status: 400 }
+      );
+    }
     modelId = body.modelId;
 
     if (!modelId || typeof modelId !== "string") {
