@@ -1,5 +1,3 @@
-import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
-
 interface Secrets {
   JIRA_HOST?: string;
   JIRA_EMAIL?: string;
@@ -14,28 +12,6 @@ interface Secrets {
 }
 
 let cachedSecrets: Secrets | null = null;
-
-async function getSecretsFromAWS(): Promise<Secrets> {
-  const client = new SecretsManagerClient({
-    region: process.env.AWS_REGION || "ap-northeast-1",
-  });
-
-  const secretName = process.env.AWS_SECRET_NAME || "story-pointer/secrets";
-
-  try {
-    const command = new GetSecretValueCommand({ SecretId: secretName });
-    const response = await client.send(command);
-
-    if (response.SecretString) {
-      return JSON.parse(response.SecretString);
-    }
-
-    throw new Error("Secret value is empty");
-  } catch (error) {
-    console.error("Failed to retrieve secrets from AWS:", error);
-    throw error;
-  }
-}
 
 function getSecretsFromEnv(): Secrets {
   return {
@@ -57,14 +33,7 @@ export async function getSecrets(): Promise<Secrets> {
     return cachedSecrets;
   }
 
-  const isProduction = process.env.NODE_ENV === "production";
-
-  if (isProduction && process.env.AWS_SECRET_NAME) {
-    cachedSecrets = await getSecretsFromAWS();
-  } else {
-    cachedSecrets = getSecretsFromEnv();
-  }
-
+  cachedSecrets = getSecretsFromEnv();
   return cachedSecrets;
 }
 
