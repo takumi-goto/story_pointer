@@ -77,6 +77,10 @@ export function useAuthenticatedFetch() {
     // Read state at call time (not render time) to ensure hydrated values
     const apiKeysState = useApiKeysStore.getState();
     const settingsState = useSettingsStore.getState();
+
+    // Debug: Log API key status
+    console.log("[useAuthenticatedFetch] geminiApiKey:", apiKeysState.geminiApiKey ? "SET" : "NOT SET");
+
     const { includeGitHub, ...fetchOptions } = options;
 
     const headers = new Headers(fetchOptions.headers);

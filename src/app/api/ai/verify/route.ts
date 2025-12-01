@@ -18,7 +18,9 @@ export async function POST(request: NextRequest) {
 
     // Get API key from header (LocalStorage) first, fallback to env
     const geminiApiKeyFromHeader = request.headers.get("X-Gemini-Api-Key");
+    console.log("[/api/ai/verify] Header X-Gemini-Api-Key:", geminiApiKeyFromHeader ? "RECEIVED" : "NOT RECEIVED");
     const geminiApiKey = geminiApiKeyFromHeader || (await getSecret("GEMINI_API_KEY"));
+    console.log("[/api/ai/verify] Final API key:", geminiApiKey ? "SET" : "NOT SET");
 
     if (!geminiApiKey) {
       return NextResponse.json(
