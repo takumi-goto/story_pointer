@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
           .map(t => ({
             key: t.key,
             summary: t.summary,
-            description: t.description,
+            description: typeof t.description === "string" ? t.description : undefined,
             storyPoints: t.storyPoints,
             daysToComplete: t.daysToComplete,
           })),
