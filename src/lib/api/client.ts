@@ -42,6 +42,17 @@ export function createAuthenticatedFetch() {
       headers.set("X-AI-Model-Id", settingsState.aiModelId);
     }
 
+    // AI API Keys
+    if (apiKeysState.geminiApiKey) {
+      headers.set("X-Gemini-Api-Key", apiKeysState.geminiApiKey);
+    }
+    if (apiKeysState.anthropicApiKey) {
+      headers.set("X-Anthropic-Api-Key", apiKeysState.anthropicApiKey);
+    }
+    if (apiKeysState.openaiApiKey) {
+      headers.set("X-Openai-Api-Key", apiKeysState.openaiApiKey);
+    }
+
     return fetch(url, {
       ...fetchOptions,
       headers,
@@ -94,6 +105,17 @@ export function useAuthenticatedFetch() {
     // AI Model設定
     if (settingsState.aiModelId) {
       headers.set("X-AI-Model-Id", settingsState.aiModelId);
+    }
+
+    // AI API Keys
+    if (apiKeysState.geminiApiKey) {
+      headers.set("X-Gemini-Api-Key", apiKeysState.geminiApiKey);
+    }
+    if (apiKeysState.anthropicApiKey) {
+      headers.set("X-Anthropic-Api-Key", apiKeysState.anthropicApiKey);
+    }
+    if (apiKeysState.openaiApiKey) {
+      headers.set("X-Openai-Api-Key", apiKeysState.openaiApiKey);
     }
 
     return fetch(url, {

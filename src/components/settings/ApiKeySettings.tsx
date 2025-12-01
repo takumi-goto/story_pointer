@@ -23,14 +23,21 @@ export default function ApiKeySettings() {
     jiraProjectKey,
     githubToken,
     githubOrg,
+    geminiApiKey,
+    anthropicApiKey,
+    openaiApiKey,
     setJiraHost,
     setJiraEmail,
     setJiraApiToken,
     setJiraProjectKey,
     setGithubToken,
     setGithubOrg,
+    setGeminiApiKey,
+    setAnthropicApiKey,
+    setOpenaiApiKey,
     clearJiraConfig,
     clearGithubConfig,
+    clearAiConfig,
   } = useApiKeysStore();
 
   // Jira設定
@@ -45,7 +52,15 @@ export default function ApiKeySettings() {
   const [localGithubOrg, setLocalGithubOrg] = useState("");
   const [showGithubToken, setShowGithubToken] = useState(false);
 
-  const [saved, setSaved] = useState({ jira: false, github: false });
+  // AI API設定
+  const [localGeminiApiKey, setLocalGeminiApiKey] = useState("");
+  const [localAnthropicApiKey, setLocalAnthropicApiKey] = useState("");
+  const [localOpenaiApiKey, setLocalOpenaiApiKey] = useState("");
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [showAnthropicKey, setShowAnthropicKey] = useState(false);
+  const [showOpenaiKey, setShowOpenaiKey] = useState(false);
+
+  const [saved, setSaved] = useState({ jira: false, github: false, ai: false });
   const [mounted, setMounted] = useState(false);
   const [envConfig, setEnvConfig] = useState<EnvConfig | null>(null);
   const [loadingEnv, setLoadingEnv] = useState(true);
@@ -83,7 +98,11 @@ export default function ApiKeySettings() {
     setLocalJiraProjectKey(jiraProjectKey || envConfig?.jiraProjectKey || "");
     setLocalGithubToken(githubToken || envConfig?.githubToken || "");
     setLocalGithubOrg(githubOrg || envConfig?.githubOrg || "");
-  }, [jiraHost, jiraEmail, jiraApiToken, jiraProjectKey, githubToken, githubOrg, mounted, loadingEnv, envConfig]);
+    // AI API keys (LocalStorageのみ)
+    setLocalGeminiApiKey(geminiApiKey || "");
+    setLocalAnthropicApiKey(anthropicApiKey || "");
+    setLocalOpenaiApiKey(openaiApiKey || "");
+  }, [jiraHost, jiraEmail, jiraApiToken, jiraProjectKey, githubToken, githubOrg, geminiApiKey, anthropicApiKey, openaiApiKey, mounted, loadingEnv, envConfig]);
 
   const handleSaveJira = () => {
     if (localJiraHost) setJiraHost(localJiraHost);
@@ -99,6 +118,14 @@ export default function ApiKeySettings() {
     if (localGithubOrg) setGithubOrg(localGithubOrg);
     setSaved((prev) => ({ ...prev, github: true }));
     setTimeout(() => setSaved((prev) => ({ ...prev, github: false })), 2000);
+  };
+
+  const handleSaveAi = () => {
+    if (localGeminiApiKey) setGeminiApiKey(localGeminiApiKey);
+    if (localAnthropicApiKey) setAnthropicApiKey(localAnthropicApiKey);
+    if (localOpenaiApiKey) setOpenaiApiKey(localOpenaiApiKey);
+    setSaved((prev) => ({ ...prev, ai: true }));
+    setTimeout(() => setSaved((prev) => ({ ...prev, ai: false })), 2000);
   };
 
   const handleClearJira = () => {
@@ -117,6 +144,16 @@ export default function ApiKeySettings() {
     setLocalGithubToken(envConfig?.githubToken || "");
     setLocalGithubOrg(envConfig?.githubOrg || "");
     setShowGithubToken(false);
+  };
+
+  const handleClearAi = () => {
+    clearAiConfig();
+    setLocalGeminiApiKey("");
+    setLocalAnthropicApiKey("");
+    setLocalOpenaiApiKey("");
+    setShowGeminiKey(false);
+    setShowAnthropicKey(false);
+    setShowOpenaiKey(false);
   };
 
   // 現在有効な設定（LocalStorage優先、なければ.env）
@@ -145,6 +182,18 @@ export default function ApiKeySettings() {
   const hasGithubChanges =
     localGithubToken !== currentGithubToken ||
     localGithubOrg !== currentGithubOrg;
+
+  // AI API設定の変更チェック
+  const currentGeminiApiKey = geminiApiKey || "";
+  const currentAnthropicApiKey = anthropicApiKey || "";
+  const currentOpenaiApiKey = openaiApiKey || "";
+
+  const hasAiChanges =
+    localGeminiApiKey !== currentGeminiApiKey ||
+    localAnthropicApiKey !== currentAnthropicApiKey ||
+    localOpenaiApiKey !== currentOpenaiApiKey;
+
+  const isAiConfigured = !!(geminiApiKey || anthropicApiKey || openaiApiKey);
 
   // .envから読み込まれているかどうか
   const isJiraFromEnv = !jiraHost && !!envConfig?.jiraHost;
@@ -378,6 +427,168 @@ export default function ApiKeySettings() {
             </Button>
             {(githubToken || githubOrg) && (
               <Button variant="outline" onClick={handleClearGithub}>
+                クリア
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* AI API設定 */}
+        <div className="p-4 border border-gray-200 rounded-lg">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="font-medium text-gray-900 text-lg">AI API設定</h4>
+            <div className="flex items-center gap-2">
+              {isAiConfigured ? (
+                <span className="text-xs px-2 py-1 bg-green-100 text-green-800 rounded">設定済み</span>
+              ) : (
+                <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-800 rounded">未設定（任意）</span>
+              )}
+            </div>
+          </div>
+          <p className="text-sm text-gray-500 mb-4">
+            ストーリーポイント推定に使用するAI APIキーを設定します。設定しない場合はサーバーの環境変数が使用されます。
+          </p>
+
+          <div className="space-y-4">
+            {/* Gemini API Key */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Gemini API Key
+              </label>
+              <div className="relative">
+                <Input
+                  type={showGeminiKey ? "text" : "password"}
+                  placeholder="Gemini API Key を入力"
+                  value={localGeminiApiKey}
+                  onChange={(e) => setLocalGeminiApiKey(e.target.value)}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowGeminiKey(!showGeminiKey)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                  title={showGeminiKey ? "非表示" : "表示"}
+                >
+                  {showGeminiKey ? (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-jira-blue hover:underline"
+                >
+                  Google AI Studio
+                </a>
+                で作成できます
+              </p>
+            </div>
+
+            {/* Anthropic API Key */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Anthropic API Key
+              </label>
+              <div className="relative">
+                <Input
+                  type={showAnthropicKey ? "text" : "password"}
+                  placeholder="Anthropic API Key を入力"
+                  value={localAnthropicApiKey}
+                  onChange={(e) => setLocalAnthropicApiKey(e.target.value)}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowAnthropicKey(!showAnthropicKey)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                  title={showAnthropicKey ? "非表示" : "表示"}
+                >
+                  {showAnthropicKey ? (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                <a
+                  href="https://console.anthropic.com/settings/keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-jira-blue hover:underline"
+                >
+                  Anthropic Console
+                </a>
+                で作成できます
+              </p>
+            </div>
+
+            {/* OpenAI API Key */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                OpenAI API Key
+              </label>
+              <div className="relative">
+                <Input
+                  type={showOpenaiKey ? "text" : "password"}
+                  placeholder="OpenAI API Key を入力"
+                  value={localOpenaiApiKey}
+                  onChange={(e) => setLocalOpenaiApiKey(e.target.value)}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowOpenaiKey(!showOpenaiKey)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                  title={showOpenaiKey ? "非表示" : "表示"}
+                >
+                  {showOpenaiKey ? (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                <a
+                  href="https://platform.openai.com/api-keys"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-jira-blue hover:underline"
+                >
+                  OpenAI Platform
+                </a>
+                で作成できます
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-2 mt-4">
+            <Button onClick={handleSaveAi} disabled={!hasAiChanges}>
+              {saved.ai ? "保存しました" : "保存"}
+            </Button>
+            {isAiConfigured && (
+              <Button variant="outline" onClick={handleClearAi}>
                 クリア
               </Button>
             )}

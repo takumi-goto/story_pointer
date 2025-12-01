@@ -14,6 +14,11 @@ interface ApiKeysState {
   githubToken: string | null;
   githubOrg: string | null;
 
+  // AI API設定
+  geminiApiKey: string | null;
+  anthropicApiKey: string | null;
+  openaiApiKey: string | null;
+
   // セッター
   setJiraHost: (host: string) => void;
   setJiraEmail: (email: string) => void;
@@ -21,10 +26,14 @@ interface ApiKeysState {
   setJiraProjectKey: (key: string) => void;
   setGithubToken: (token: string) => void;
   setGithubOrg: (org: string) => void;
+  setGeminiApiKey: (key: string) => void;
+  setAnthropicApiKey: (key: string) => void;
+  setOpenaiApiKey: (key: string) => void;
 
   // クリア
   clearJiraConfig: () => void;
   clearGithubConfig: () => void;
+  clearAiConfig: () => void;
   clearAllConfig: () => void;
 
   // 状態チェック
@@ -32,6 +41,7 @@ interface ApiKeysState {
   getConfigurationStatus: () => {
     jira: boolean;
     github: boolean;
+    ai: boolean;
   };
 }
 
@@ -44,6 +54,9 @@ export const useApiKeysStore = create<ApiKeysState>()(
       jiraProjectKey: null,
       githubToken: null,
       githubOrg: null,
+      geminiApiKey: null,
+      anthropicApiKey: null,
+      openaiApiKey: null,
 
       setJiraHost: (host: string) => set({ jiraHost: host }),
       setJiraEmail: (email: string) => set({ jiraEmail: email }),
@@ -51,6 +64,9 @@ export const useApiKeysStore = create<ApiKeysState>()(
       setJiraProjectKey: (key: string) => set({ jiraProjectKey: key }),
       setGithubToken: (token: string) => set({ githubToken: token }),
       setGithubOrg: (org: string) => set({ githubOrg: org }),
+      setGeminiApiKey: (key: string) => set({ geminiApiKey: key }),
+      setAnthropicApiKey: (key: string) => set({ anthropicApiKey: key }),
+      setOpenaiApiKey: (key: string) => set({ openaiApiKey: key }),
 
       clearJiraConfig: () =>
         set({
@@ -66,6 +82,13 @@ export const useApiKeysStore = create<ApiKeysState>()(
           githubOrg: null,
         }),
 
+      clearAiConfig: () =>
+        set({
+          geminiApiKey: null,
+          anthropicApiKey: null,
+          openaiApiKey: null,
+        }),
+
       clearAllConfig: () =>
         set({
           jiraHost: null,
@@ -74,6 +97,9 @@ export const useApiKeysStore = create<ApiKeysState>()(
           jiraProjectKey: null,
           githubToken: null,
           githubOrg: null,
+          geminiApiKey: null,
+          anthropicApiKey: null,
+          openaiApiKey: null,
         }),
 
       isConfigured: () => {
@@ -87,6 +113,7 @@ export const useApiKeysStore = create<ApiKeysState>()(
         return {
           jira: !!(state.jiraHost && state.jiraEmail && state.jiraApiToken),
           github: !!state.githubToken,
+          ai: !!(state.geminiApiKey || state.anthropicApiKey || state.openaiApiKey),
         };
       },
     }),

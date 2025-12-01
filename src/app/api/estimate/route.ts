@@ -14,8 +14,12 @@ export async function POST(request: NextRequest) {
     const jiraEmail = request.headers.get("X-Jira-Email") || (await getSecret("JIRA_EMAIL"));
     const jiraApiToken = request.headers.get("X-Jira-Api-Token") || (await getSecret("JIRA_API_TOKEN"));
     const githubToken = request.headers.get("X-GitHub-Token") || (await getSecret("GITHUB_TOKEN"));
-    const geminiApiKey = await getSecret("GEMINI_API_KEY");
     const aiModelId = request.headers.get("X-AI-Model-Id") || DEFAULT_MODEL_ID;
+
+    // AI API Keys from headers, fallback to env
+    const geminiApiKeyFromHeader = request.headers.get("X-Gemini-Api-Key");
+    const anthropicApiKeyFromHeader = request.headers.get("X-Anthropic-Api-Key");
+    const openaiApiKeyFromHeader = request.headers.get("X-Openai-Api-Key");
 
     if (!jiraHost || !jiraEmail || !jiraApiToken) {
       return NextResponse.json(
@@ -30,19 +34,19 @@ export async function POST(request: NextRequest) {
 
     switch (provider) {
       case "gemini":
-        apiKey = geminiApiKey;
+        apiKey = geminiApiKeyFromHeader || (await getSecret("GEMINI_API_KEY"));
         break;
       case "claude":
-        apiKey = await getSecret("ANTHROPIC_API_KEY");
+        apiKey = anthropicApiKeyFromHeader || (await getSecret("ANTHROPIC_API_KEY"));
         break;
       case "openai":
-        apiKey = await getSecret("OPENAI_API_KEY");
+        apiKey = openaiApiKeyFromHeader || (await getSecret("OPENAI_API_KEY"));
         break;
     }
 
     if (!apiKey) {
       return NextResponse.json(
-        { success: false, error: `${provider.toUpperCase()} API Keyが設定されていません。管理者に連絡してください。` },
+        { success: false, error: `${provider.toUpperCase()} API Keyが設定されていません。設定画面で設定してください。` },
         { status: 500 }
       );
     }
