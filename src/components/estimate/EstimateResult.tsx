@@ -5,8 +5,8 @@ import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import Card, { CardTitle, CardDescription } from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
-import ContributionRadar from "./ContributionRadar";
-import ReferenceTickets from "./ReferenceTickets";
+import SimilarTicketsSection from "./SimilarTicketsSection";
+import PointCandidates from "./PointCandidates";
 import SplitSuggestion from "./SplitSuggestion";
 import { getPointColor, getPointDescription } from "@/lib/utils/fibonacci";
 import type { EstimationResult, StoryPoint } from "@/types";
@@ -120,22 +120,11 @@ export default function EstimateResult({ result, ticketKey, ticketSummary }: Est
       <div ref={contentRef} className="space-y-6">
         {/* Main Estimation Result */}
         <Card>
-          <div className="flex items-start justify-between">
-            <div>
-              <CardTitle>推定結果</CardTitle>
-              <CardDescription className="mt-1">
-                {ticketKey}: {ticketSummary}
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500">信頼度:</span>
-              <span className={`text-sm font-medium ${
-                result.confidence >= 70 ? "text-green-600" :
-                result.confidence >= 40 ? "text-yellow-600" : "text-red-600"
-              }`}>
-                {result.confidence}%
-              </span>
-            </div>
+          <div>
+            <CardTitle>推定結果</CardTitle>
+            <CardDescription className="mt-1">
+              {ticketKey}: {ticketSummary}
+            </CardDescription>
           </div>
 
           <div className="mt-6 flex items-center gap-6">
@@ -150,8 +139,23 @@ export default function EstimateResult({ result, ticketKey, ticketSummary }: Est
               <p className="text-sm text-gray-500">
                 {getPointDescription(result.estimatedPoints as StoryPoint)}
               </p>
+              {result.baseline && (
+                <p className="text-sm text-gray-600 mt-2">
+                  ベースライン: <span className="font-medium">{result.baseline.key}</span> ({result.baseline.points}pt)
+                </p>
+              )}
             </div>
           </div>
+
+          {/* Point Candidates */}
+          {result.pointCandidates && result.pointCandidates.length > 0 && (
+            <div className="mt-6 pt-4 border-t">
+              <PointCandidates
+                candidates={result.pointCandidates}
+                selectedPoint={result.estimatedPoints}
+              />
+            </div>
+          )}
         </Card>
 
         {/* Split Suggestion */}
@@ -165,23 +169,17 @@ export default function EstimateResult({ result, ticketKey, ticketSummary }: Est
           <p className="mt-4 text-gray-700 whitespace-pre-wrap">{result.reasoning}</p>
         </Card>
 
-        {/* Contribution Factors */}
-        <Card>
-          <CardTitle>分析要因の寄与率</CardTitle>
-          <CardDescription className="mb-4">
-            各分析観点がポイント推定にどの程度影響したかを示します
-          </CardDescription>
-          <ContributionRadar factors={result.contributionFactors} />
-        </Card>
-
-        {/* Reference Tickets and PRs */}
-        {result.references.length > 0 && (
+        {/* Similar Tickets Analysis */}
+        {result.baseline && (
           <Card>
-            <CardTitle>参考にした過去のデータ</CardTitle>
+            <CardTitle>類似チケット分析</CardTitle>
             <CardDescription className="mb-4">
-              寄与率が高いものほどポイント推定に強く影響しています
+              過去のチケットとの比較に基づいてポイントを推定しました
             </CardDescription>
-            <ReferenceTickets references={result.references} />
+            <SimilarTicketsSection
+              baseline={result.baseline}
+              similarTickets={result.similarTickets || []}
+            />
           </Card>
         )}
 

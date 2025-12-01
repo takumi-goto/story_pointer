@@ -81,10 +81,10 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
         throw new Error(data.error || "Estimation failed");
       }
 
-      setResult(data.data);
+      setResult(data.data as EstimationResult);
+      setIsLoading(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Estimation failed");
-    } finally {
       setIsLoading(false);
     }
   };
@@ -101,7 +101,7 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
             </Button>
           </div>
           {result && (
-            <Button variant="secondary" size="sm" onClick={runEstimation} disabled={isLoading}>
+            <Button variant="secondary" size="sm" onClick={() => runEstimation()} disabled={isLoading}>
               再推定
             </Button>
           )}
@@ -130,7 +130,7 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
               </svg>
               <p className="text-red-700 font-medium">推定に失敗しました</p>
               <p className="text-red-600 text-sm">{error}</p>
-              <Button onClick={runEstimation}>再試行</Button>
+              <Button onClick={() => runEstimation()}>再試行</Button>
             </div>
           </Card>
         ) : result ? (

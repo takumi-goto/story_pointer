@@ -71,21 +71,63 @@ export interface GitHubPullRequest {
 }
 
 // Estimation Types
-export interface EstimationReference {
-  type: "ticket" | "pull_request";
-  key: string;
-  url: string;
-  points?: number;
+export interface RelatedPR {
+  number: string;
   summary: string;
-  contributionWeight: number; // 0-100, percentage contribution to the estimate
+  filesChanged: number;
+  commits: number;
+  leadTimeDays: number;
 }
 
-export interface ContributionFactors {
-  descriptionComplexity: number; // 0-100
-  similarTickets: number; // 0-100
-  prMetrics: number; // 0-100
-  historicalVelocity: number; // 0-100
-  uncertainty: number; // 0-100
+export interface DiffEvaluation {
+  scopeDiff: number; // -2 to +2
+  fileDiff: number; // -2 to +2
+  logicDiff: number; // -2 to +2
+  riskDiff: number; // -2 to +2
+  diffTotal: number; // -8 to +8
+  diffReason: string;
+}
+
+export interface SimilarTicket {
+  key: string;
+  points: number;
+  similarityScore: number; // 0-5
+  similarityReason: string[];
+  diff: DiffEvaluation;
+  relatedPRs: RelatedPR[];
+}
+
+export interface BaselineTicket {
+  key: string;
+  points: number;
+  similarityScore: number; // 0-5
+  similarityReason: string[];
+}
+
+export interface PointCandidate {
+  points: number;
+  candidateReason: string;
+}
+
+export interface WorkTypeBreakdown {
+  T1_small_existing_change: number; // 0-2
+  T2_pattern_reuse: number; // 0-2
+  T3_new_logic_design: number; // 0-2
+  T4_cross_system_impact: number; // 0-2
+  T5_investigation_heavy: number; // 0-2
+  T6_data_backfill_heavy: number; // 0-2
+}
+
+export interface AILeverage {
+  score: number;
+  appliedReduction: "none" | "down_one_level";
+  reductionReason: string;
+}
+
+export interface RaisePermissionCheck {
+  A: { passed: boolean; evidence: string };
+  B: { passed: boolean; evidence: string };
+  C: { passed: boolean; evidence: string };
 }
 
 export interface EstimationResult {
@@ -93,9 +135,12 @@ export interface EstimationResult {
   reasoning: string;
   shouldSplit: boolean;
   splitSuggestion?: string;
-  references: EstimationReference[];
-  contributionFactors: ContributionFactors;
-  confidence: number; // 0-100
+  baseline: BaselineTicket;
+  workTypeBreakdown?: WorkTypeBreakdown;
+  aiLeverage?: AILeverage;
+  similarTickets: SimilarTicket[];
+  pointCandidates: PointCandidate[];
+  raisePermissionCheck?: RaisePermissionCheck;
 }
 
 export interface EstimationRequest {

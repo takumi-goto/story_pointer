@@ -130,13 +130,16 @@ export async function POST(request: NextRequest) {
 
       sprintDataWithPRs.push({
         name: sprint.name,
-        tickets: sprint.tickets.map(t => ({
-          key: t.key,
-          summary: t.summary,
-          description: t.description,
-          storyPoints: t.storyPoints,
-          daysToComplete: t.daysToComplete,
-        })),
+        // Exclude target ticket to avoid bias
+        tickets: sprint.tickets
+          .filter(t => t.key !== ticketKey)
+          .map(t => ({
+            key: t.key,
+            summary: t.summary,
+            description: t.description,
+            storyPoints: t.storyPoints,
+            daysToComplete: t.daysToComplete,
+          })),
         pullRequests: prMap,
       });
     }
@@ -158,23 +161,9 @@ export async function POST(request: NextRequest) {
     // Get estimation from AI
     const result = await aiClient.estimateStoryPoints(context);
 
-    // Add Jira URLs to ticket references
-    const enhancedResult = {
-      ...result,
-      references: result.references.map(ref => {
-        if (ref.type === "ticket" && (!ref.url || !ref.url.startsWith("http"))) {
-          return {
-            ...ref,
-            url: jiraClient.getIssueUrl(ref.key),
-          };
-        }
-        return ref;
-      }),
-    };
-
     return NextResponse.json({
       success: true,
-      data: enhancedResult,
+      data: result,
     });
   } catch (error) {
     console.error("Estimation error:", error);

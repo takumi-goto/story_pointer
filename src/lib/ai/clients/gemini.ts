@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { AIEstimationClient, EstimationContext, AIProvider } from "../types";
-import type { EstimationResult, StoryPoint } from "@/types";
+import type { EstimationResult, StoryPoint, BaselineTicket, SimilarTicket, PointCandidate } from "@/types";
 import { DEFAULT_PROMPT, buildPrompt } from "@/lib/gemini/prompts";
 import { isValidStoryPoint } from "@/lib/utils/fibonacci";
 
@@ -9,22 +9,37 @@ interface GeminiEstimationResponse {
   reasoning: string;
   shouldSplit: boolean;
   splitSuggestion?: string;
-  references: Array<{
-    type: "ticket" | "pull_request";
+  baseline: {
     key: string;
-    url: string;
-    points?: number;
-    summary: string;
-    contributionWeight: number;
-  }>;
-  contributionFactors: {
-    descriptionComplexity: number;
-    similarTickets: number;
-    prMetrics: number;
-    historicalVelocity: number;
-    uncertainty: number;
+    points: number;
+    similarityScore: number;
+    similarityReason: string[];
   };
-  confidence: number;
+  similarTickets: Array<{
+    key: string;
+    points: number;
+    similarityScore: number;
+    similarityReason: string[];
+    diff: {
+      scopeDiff: number;
+      fileDiff: number;
+      logicDiff: number;
+      riskDiff: number;
+      diffTotal: number;
+      diffReason: string;
+    };
+    relatedPRs: Array<{
+      number: string;
+      summary: string;
+      filesChanged: number;
+      commits: number;
+      leadTimeDays: number;
+    }>;
+  }>;
+  pointCandidates: Array<{
+    points: number;
+    candidateReason: string;
+  }>;
 }
 
 export class GeminiEstimationClient implements AIEstimationClient {
@@ -64,23 +79,57 @@ export class GeminiEstimationClient implements AIEstimationClient {
       // Validate and normalize the response
       const estimatedPoints = this.normalizeStoryPoint(parsed.estimatedPoints);
 
+      // Build baseline with fallback for missing data
+      const baseline = parsed.baseline ? {
+        key: parsed.baseline.key || "N/A",
+        points: parsed.baseline.points || 0,
+        similarityScore: this.normalizeSimilarityScore(parsed.baseline.similarityScore || 0),
+        similarityReason: parsed.baseline.similarityReason || [],
+      } : {
+        key: "N/A",
+        points: 0,
+        similarityScore: 0,
+        similarityReason: [],
+      };
+
       return {
         estimatedPoints,
-        reasoning: parsed.reasoning,
+        reasoning: parsed.reasoning || "",
         shouldSplit: parsed.shouldSplit || estimatedPoints >= 13,
-        splitSuggestion: parsed.splitSuggestion,
-        references: parsed.references.map((ref) => ({
-          ...ref,
-          contributionWeight: Math.min(100, Math.max(0, ref.contributionWeight)),
+        splitSuggestion: parsed.splitSuggestion || "",
+        baseline,
+        similarTickets: (parsed.similarTickets || []).filter((ticket) => ticket != null).map((ticket) => ({
+          key: ticket.key || "N/A",
+          points: ticket.points || 0,
+          similarityScore: this.normalizeSimilarityScore(ticket.similarityScore || 0),
+          similarityReason: ticket.similarityReason || [],
+          diff: ticket.diff ? {
+            scopeDiff: this.normalizeDiffValue(ticket.diff.scopeDiff || 0),
+            fileDiff: this.normalizeDiffValue(ticket.diff.fileDiff || 0),
+            logicDiff: this.normalizeDiffValue(ticket.diff.logicDiff || 0),
+            riskDiff: this.normalizeDiffValue(ticket.diff.riskDiff || 0),
+            diffTotal: ticket.diff.diffTotal || 0,
+            diffReason: ticket.diff.diffReason || "",
+          } : {
+            scopeDiff: 0,
+            fileDiff: 0,
+            logicDiff: 0,
+            riskDiff: 0,
+            diffTotal: 0,
+            diffReason: "",
+          },
+          relatedPRs: (ticket.relatedPRs || []).map((pr) => ({
+            number: pr.number || "",
+            summary: pr.summary || "",
+            filesChanged: pr.filesChanged || 0,
+            commits: pr.commits || 0,
+            leadTimeDays: pr.leadTimeDays || 0,
+          })),
         })),
-        contributionFactors: {
-          descriptionComplexity: this.normalizePercentage(parsed.contributionFactors.descriptionComplexity),
-          similarTickets: this.normalizePercentage(parsed.contributionFactors.similarTickets),
-          prMetrics: this.normalizePercentage(parsed.contributionFactors.prMetrics),
-          historicalVelocity: this.normalizePercentage(parsed.contributionFactors.historicalVelocity),
-          uncertainty: this.normalizePercentage(parsed.contributionFactors.uncertainty),
-        },
-        confidence: this.normalizePercentage(parsed.confidence),
+        pointCandidates: (parsed.pointCandidates || []).map((candidate) => ({
+          points: candidate.points || 0,
+          candidateReason: candidate.candidateReason || "",
+        })),
       };
     } catch (error) {
       console.error("Gemini estimation error:", error);
@@ -109,7 +158,11 @@ export class GeminiEstimationClient implements AIEstimationClient {
     return closest;
   }
 
-  private normalizePercentage(value: number): number {
-    return Math.min(100, Math.max(0, Math.round(value)));
+  private normalizeSimilarityScore(value: number): number {
+    return Math.min(5, Math.max(0, Math.round(value)));
+  }
+
+  private normalizeDiffValue(value: number): number {
+    return Math.min(2, Math.max(-2, Math.round(value)));
   }
 }
