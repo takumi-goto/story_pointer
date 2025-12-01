@@ -1,1 +1,19 @@
+#!/bin/sh
+
+# Load nvm (multiple possible locations)
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+
+# Homebrew nvm
+[ -s "/opt/homebrew/opt/nvm/nvm.sh" ] && \. "/opt/homebrew/opt/nvm/nvm.sh"
+
+# fnm
+command -v fnm > /dev/null && eval "$(fnm env)"
+
+# Homebrew node
+[ -d "/opt/homebrew/bin" ] && export PATH="/opt/homebrew/bin:$PATH"
+
+# Volta
+[ -d "$HOME/.volta/bin" ] && export PATH="$HOME/.volta/bin:$PATH"
+
 npx lint-staged
