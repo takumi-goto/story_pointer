@@ -31,7 +31,8 @@ export function buildSearchJQL(query: SearchQuery): string {
 }
 
 export function buildSprintIssuesJQL(sprintId: number): string {
-  return `sprint = ${sprintId} ORDER BY rank ASC`;
+  // Exclude subtasks - only include Story, Task, Bug
+  return `sprint = ${sprintId} AND issuetype in (Story, Task, Bug) ORDER BY rank ASC`;
 }
 
 export function buildRecentCompletedJQL(projectKey: string, days: number = 90): string {

@@ -182,6 +182,8 @@ export function formatSprintData(
         url: string;
         fileCount: number;
         commitCount: number;
+        additions?: number;
+        deletions?: number;
         daysToMerge?: number;
       }>
     >;

@@ -90,6 +90,8 @@ export async function POST(request: NextRequest) {
           url: string;
           fileCount: number;
           commitCount: number;
+          additions?: number;
+          deletions?: number;
           daysToMerge?: number;
         }>>();
 
@@ -119,6 +121,8 @@ export async function POST(request: NextRequest) {
                       url: pr.url,
                       fileCount: pr.fileCount,
                       commitCount: pr.commitCount,
+                      additions: pr.additions,
+                      deletions: pr.deletions,
                       daysToMerge: pr.daysToMerge,
                     })),
                   };
