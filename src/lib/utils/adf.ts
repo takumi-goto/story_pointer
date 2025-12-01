@@ -1,16 +1,11 @@
 // Atlassian Document Format (ADF) utilities
+import type { ADFDocument } from "@/types";
 
 interface ADFNode {
   type: string;
   content?: ADFNode[];
   text?: string;
   marks?: Array<{ type: string }>;
-}
-
-interface ADFDocument {
-  type: "doc";
-  version: number;
-  content: ADFNode[];
 }
 
 /**
@@ -27,7 +22,7 @@ export function extractTextFromADF(adf: ADFDocument | string | null | undefined)
     return "";
   }
 
-  return extractTextFromNodes(adf.content);
+  return extractTextFromNodes(adf.content as ADFNode[]);
 }
 
 function extractTextFromNodes(nodes: ADFNode[]): string {
