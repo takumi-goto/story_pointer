@@ -5,11 +5,13 @@ import Card, { CardTitle, CardDescription } from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import { useSettingsStore, DEFAULT_AI_MODEL_ID } from "@/store/settings";
+import { useAuthenticatedFetch } from "@/lib/api/client";
 
 type VerificationStatus = "idle" | "verifying" | "success" | "error";
 
 export default function ModelSettings() {
   const { aiModelId, setAiModelId } = useSettingsStore();
+  const authFetch = useAuthenticatedFetch();
   const [inputValue, setInputValue] = useState(aiModelId);
   const [status, setStatus] = useState<VerificationStatus>("idle");
   const [message, setMessage] = useState("");
@@ -30,7 +32,7 @@ export default function ModelSettings() {
     setMessage("");
 
     try {
-      const response = await fetch("/api/ai/verify", {
+      const response = await authFetch("/api/ai/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ modelId: inputValue.trim() }),
