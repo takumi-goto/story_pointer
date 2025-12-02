@@ -36,11 +36,13 @@ export async function GET(
 
   if (job.status === "error") {
     const error = job.error;
+    const logs = job.logs;
     deleteJob(jobId); // Clean up failed job
     return NextResponse.json({
       success: false,
       status: "error",
       error,
+      logs,
     });
   }
 

@@ -76,6 +76,11 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
     }
 
     if (data.status === "error") {
+      // Update logs before throwing error so they're visible
+      if (data.logs) {
+        setLogs(data.logs);
+        setShowLogs(true); // Auto-expand logs on error
+      }
       throw new Error(data.error || "推定に失敗しました");
     }
 
@@ -151,6 +156,7 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
         return; // Cancelled, ignore
       }
       setError(err instanceof Error ? err.message : "Estimation failed");
+      setShowLogs(true); // Auto-expand logs on error
       setIsLoading(false);
     }
   }, [authFetch, ticketKey, ticketSummary, ticketDescription, boardId, sprintCount, customPrompt, mcpPrompt, selectedRepositories, pollJobStatus]);
@@ -294,6 +300,36 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
               <p className="text-red-600 text-sm">{error}</p>
               <Button onClick={() => runEstimation()}>再試行</Button>
             </div>
+
+            {/* Logs Section for Error */}
+            {logs.length > 0 && (
+              <div className="border-t border-red-200 mt-4 pt-4">
+                <button
+                  onClick={() => setShowLogs(!showLogs)}
+                  className="flex items-center gap-2 text-sm text-red-600 hover:text-red-800"
+                >
+                  <svg
+                    className={`w-4 h-4 transition-transform ${showLogs ? "rotate-90" : ""}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                  実行ログ ({logs.length}件)
+                </button>
+                {showLogs && (
+                  <div className="mt-2 max-h-80 overflow-y-auto bg-gray-900 text-gray-100 rounded-lg p-3 font-mono text-xs">
+                    {logs.map((log, index) => (
+                      <div key={index} className="py-0.5">
+                        <span className="text-gray-500">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                        <span className="ml-2">{log.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </Card>
         ) : result ? (
           <EstimateResult

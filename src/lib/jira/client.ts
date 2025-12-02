@@ -150,15 +150,17 @@ export class JiraClient {
 
   async getSprintsWithTickets(boardId: number, count: number = 10): Promise<SprintWithTickets[]> {
     const sprints = await this.getSprints(boardId, count);
-    const sprintsWithTickets: SprintWithTickets[] = [];
 
-    for (const sprint of sprints) {
-      const tickets = await this.getSprintIssues(sprint.id);
-      sprintsWithTickets.push({
-        ...sprint,
-        tickets,
-      });
-    }
+    // Fetch all sprint issues in parallel for better performance
+    const sprintsWithTickets = await Promise.all(
+      sprints.map(async (sprint) => {
+        const tickets = await this.getSprintIssues(sprint.id);
+        return {
+          ...sprint,
+          tickets,
+        };
+      })
+    );
 
     return sprintsWithTickets;
   }
