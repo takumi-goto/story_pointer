@@ -19,7 +19,7 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
   const { ticketId } = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { sprintCount, customPrompt, mcpPrompt, selectedRepositories } = useSettingsStore();
+  const { sprintCount, customPrompt, mcpPrompt, selectedRepositories, _hasHydrated } = useSettingsStore();
   const authFetch = useAuthenticatedFetch();
 
   const [result, setResult] = useState<EstimationResult | null>(null);
@@ -146,12 +146,17 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
     }
   }, [authFetch, ticketKey, ticketSummary, ticketDescription, boardId, sprintCount, customPrompt, mcpPrompt, selectedRepositories, pollJobStatus]);
 
-  // Run estimation on mount - intentionally not including runEstimation in deps
-  // to prevent re-running when the callback changes
+  // Run estimation on mount - wait for hydration before starting
   useEffect(() => {
     if (!boardId) {
       setError("ボードIDが指定されていません");
       setIsLoading(false);
+      return;
+    }
+
+    // Wait for Zustand to hydrate from localStorage
+    if (!_hasHydrated) {
+      console.log("[EstimatePage] Waiting for settings hydration...");
       return;
     }
 
@@ -161,6 +166,7 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
     }
     hasStartedRef.current = true;
 
+    console.log("[EstimatePage] Hydration complete, starting estimation");
     runEstimation();
 
     return () => {
@@ -169,7 +175,7 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticketKey, boardId]);
+  }, [ticketKey, boardId, _hasHydrated]);
 
   // Track elapsed time during loading
   useEffect(() => {

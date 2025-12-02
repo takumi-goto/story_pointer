@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import Card, { CardTitle, CardDescription } from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import { useSettingsStore, DEFAULT_PROMPT } from "@/store/settings";
@@ -9,9 +9,15 @@ export default function PromptEditor() {
   const { customPrompt, setCustomPrompt, resetPrompt } = useSettingsStore();
   const [prompt, setPrompt] = useState(customPrompt || DEFAULT_PROMPT);
   const [isSaved, setIsSaved] = useState(true);
+  const prevCustomPromptRef = useRef(customPrompt);
 
+  // Sync with store when customPrompt changes externally (e.g., localStorage hydration)
   useEffect(() => {
-    setPrompt(customPrompt || DEFAULT_PROMPT);
+    if (prevCustomPromptRef.current !== customPrompt) {
+      prevCustomPromptRef.current = customPrompt;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPrompt(customPrompt || DEFAULT_PROMPT);
+    }
   }, [customPrompt]);
 
   const handleChange = (value: string) => {
@@ -73,11 +79,9 @@ export default function PromptEditor() {
           </div>
 
           <div className="flex gap-2">
-            {isModified && (
-              <Button variant="outline" size="sm" onClick={handleReset}>
-                デフォルトに戻す
-              </Button>
-            )}
+            <Button variant="outline" size="sm" onClick={handleReset}>
+              デフォルトを使う
+            </Button>
             <Button size="sm" onClick={handleSave} disabled={isSaved}>
               {isSaved ? "保存済み" : "保存"}
             </Button>

@@ -85,11 +85,9 @@ export default function MCPPromptEditor() {
           </div>
 
           <div className="flex gap-2">
-            {isModified && (
-              <Button variant="outline" size="sm" onClick={handleReset}>
-                デフォルトに戻す
-              </Button>
-            )}
+            <Button variant="outline" size="sm" onClick={handleReset}>
+              デフォルトを使う
+            </Button>
             <Button size="sm" onClick={handleSave} disabled={isSaved}>
               {isSaved ? "保存済み" : "保存"}
             </Button>

@@ -11,7 +11,7 @@ import {
   type Content,
   type Part,
 } from "@google/generative-ai";
-import type { AIEstimationClient, EstimationContext, AIProvider } from "../types";
+import type { AIEstimationClient, EstimationContext, AIProvider, SprintDataForPrompt } from "../types";
 import type {
   EstimationResult,
   StoryPoint,
@@ -33,7 +33,7 @@ const MAX_TOOL_ITERATIONS = 10;
 const MAX_TOOL_CALLS_PER_ITERATION = 5; // Limit parallel tool calls per iteration
 const MAX_TOTAL_TOOL_CALLS = 12; // Total tool calls limit across all iterations (allow 2 repos × 4 calls each + extras)
 const TOOL_CALL_DELAY_MS = 1000; // Delay between tool calls to avoid rate limiting
-const MAX_RETRY_ATTEMPTS = 3;
+const MAX_RETRY_ATTEMPTS = 5; // Increased for free tier rate limits
 const INITIAL_RETRY_DELAY_MS = 5000; // 5 seconds
 
 /**
@@ -44,25 +44,45 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Check if error is a rate limit error
+ * Check if error is a retriable error (rate limit or server error)
  */
-function isRateLimitError(error: unknown): boolean {
+function isRetriableError(error: unknown): boolean {
   // Check Error instance
   if (error instanceof Error) {
-    return error.message.includes("429") || error.message.includes("Too Many Requests");
+    const msg = error.message;
+    // Rate limit errors
+    if (msg.includes("429") || msg.includes("Too Many Requests")) return true;
+    // Server errors (500, 502, 503, 504)
+    if (msg.includes("500") || msg.includes("Internal Server Error")) return true;
+    if (msg.includes("502") || msg.includes("Bad Gateway")) return true;
+    if (msg.includes("503") || msg.includes("Service Unavailable")) return true;
+    if (msg.includes("504") || msg.includes("Gateway Timeout")) return true;
   }
   // Check object format (Google's API error format)
   if (typeof error === "object" && error !== null) {
     const obj = error as Record<string, unknown>;
-    if (obj.status === 429 || obj.statusText === "Too Many Requests") {
+    const status = obj.status as number | undefined;
+    if (status === 429 || status === 500 || status === 502 || status === 503 || status === 504) {
+      return true;
+    }
+    if (obj.statusText === "Too Many Requests" || obj.statusText === "Internal Server Error") {
       return true;
     }
     // Check nested message
     if (typeof obj.message === "string") {
-      return obj.message.includes("429") || obj.message.includes("Too Many Requests");
+      const msg = obj.message;
+      if (msg.includes("429") || msg.includes("Too Many Requests")) return true;
+      if (msg.includes("500") || msg.includes("Internal Server Error")) return true;
     }
   }
   return false;
+}
+
+/**
+ * Check if error is a rate limit error (for backwards compatibility)
+ */
+function isRateLimitError(error: unknown): boolean {
+  return isRetriableError(error);
 }
 
 /**
@@ -84,17 +104,24 @@ function isQuotaExceededError(error: unknown): boolean {
   }
 
   if (message) {
+    // Debug: Log what we're checking
+    const hasPerMinute = message.includes("PerMinute") || message.includes("per minute");
+    console.log(`[isQuotaExceededError] hasPerMinute: ${hasPerMinute}, message contains: PerMinute=${message.includes("PerMinute")}`);
+
     // If it's a per-minute rate limit, treat as temporary (can retry)
-    if (message.includes("PerMinute") || message.includes("per minute")) {
+    if (hasPerMinute) {
+      console.log(`[isQuotaExceededError] Per-minute rate limit detected, returning false (retriable)`);
       return false;
     }
 
     // Check for true quota exceeded indicators (billing/plan limits)
-    return (
+    const isRealQuotaExceeded = (
       message.includes("exceeded your current quota") ||
       message.includes("Quota exceeded") ||
       message.includes("QuotaFailure")
     );
+    console.log(`[isQuotaExceededError] isRealQuotaExceeded: ${isRealQuotaExceeded}`);
+    return isRealQuotaExceeded;
   }
   return false;
 }
@@ -259,15 +286,20 @@ export class GeminiMCPEstimationClient implements AIEstimationClient {
     } catch (error) {
       console.log(`[Gemini] API error:`, error);
 
+      // Debug: Check error classification
+      const isQuotaErr = isQuotaExceededError(error);
+      const isRateLimitErr = isRateLimitError(error);
+      console.log(`[Gemini] Error classification - isQuotaExceeded: ${isQuotaErr}, isRateLimit: ${isRateLimitErr}`);
+
       // Quota exceeded errors should not be retried - user needs to change model or wait
-      if (isQuotaExceededError(error)) {
+      if (isQuotaErr) {
         console.log(`[Gemini] Quota exceeded - not retrying. Please change model in settings.`);
         this.onProgress?.(`クォータ超過: 設定画面でモデルを変更してください`);
         throw new Error(`APIクォータを超過しました。設定画面でモデルを変更して再試行してください。`);
       }
 
       // Temporary rate limits can be retried
-      if (isRateLimitError(error) && attempt < MAX_RETRY_ATTEMPTS) {
+      if (isRateLimitErr && attempt < MAX_RETRY_ATTEMPTS) {
         const retryDelay = extractRetryDelay(error) ||
                           INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt);
 
@@ -571,13 +603,63 @@ export class GeminiMCPEstimationClient implements AIEstimationClient {
       .replace(/{targetTicketKey}/g, context.targetTicket.key)
       .replace("{repositories}", repositoriesList);
 
+    // Compact sprint data to reduce token count
+    const compactSprintData = this.compactSprintData(context.sprintData);
+    const originalCount = context.sprintData.reduce((sum: number, s: SprintDataForPrompt) => sum + s.tickets.length, 0);
+    const compactCount = compactSprintData.reduce((sum: number, s: SprintDataForPrompt) => sum + s.tickets.length, 0);
+    console.log(`[Gemini] Sprint data compacted: ${originalCount} -> ${compactCount} tickets`);
+    this.onProgress?.(`推定に使うチケット数は最大100件までです（${originalCount}件→${compactCount}件）`);
+
     // Build the prompt with proper replacements
     const formattedPrompt = basePrompt
       .replace("{ticketSummary}", context.targetTicket.summary)
       .replace("{ticketDescription}", context.targetTicket.description || "説明なし")
-      .replace("{sprintData}", JSON.stringify(context.sprintData, null, 2));
+      .replace("{sprintData}", JSON.stringify(compactSprintData, null, 2));
 
     return mcpInstructions + formattedPrompt;
+  }
+
+  /**
+   * Compact sprint data to reduce token count
+   * - Only include tickets with story points (useful for baseline)
+   * - Total max 100 tickets, distributed evenly across sprints
+   * - Extra slots go to most recent sprints (first in array)
+   */
+  private compactSprintData(sprintData: SprintDataForPrompt[]): SprintDataForPrompt[] {
+    const MAX_TOTAL_TICKETS = 100;
+
+    type Ticket = SprintDataForPrompt["tickets"][number];
+
+    // First, filter to only tickets with story points
+    const sprintsWithFilteredTickets = sprintData.map(sprint => ({
+      ...sprint,
+      tickets: sprint.tickets.filter((t: Ticket) => t.storyPoints !== undefined && t.storyPoints > 0),
+    }));
+
+    const numSprints = sprintsWithFilteredTickets.length;
+    if (numSprints === 0) return sprintsWithFilteredTickets;
+
+    // Calculate even distribution
+    const basePerSprint = Math.floor(MAX_TOTAL_TICKETS / numSprints);
+    const extraTickets = MAX_TOTAL_TICKETS % numSprints;
+
+    // Distribute tickets: extra slots go to most recent sprints (first in array)
+    return sprintsWithFilteredTickets.map((sprint, index) => {
+      const limit = basePerSprint + (index < extraTickets ? 1 : 0);
+      return {
+        sprintName: sprint.sprintName,
+        tickets: sprint.tickets
+          .slice(0, limit)
+          .map((t: Ticket) => ({
+            key: t.key,
+            summary: t.summary,
+            description: t.description,
+            storyPoints: t.storyPoints,
+            daysToComplete: t.daysToComplete,
+            // Omit pullRequests to save tokens (MCP can fetch if needed)
+          })),
+      };
+    });
   }
 
   private extractFunctionCalls(response: { candidates?: Array<{ content?: Content }> }): FunctionCall[] {

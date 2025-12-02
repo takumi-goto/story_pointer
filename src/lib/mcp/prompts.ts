@@ -14,34 +14,35 @@ export const DEFAULT_MCP_PROMPT = `## ツール使用について（必須）
 ### 検索対象リポジトリ
 {repositories}
 
-### 必須手順（この順番で必ず実行すること）
+### 必須手順
 
-**Step 0: 関連PR検索（必須・最初に実行）**
-推定を始める前に、まず以下を必ず実行してください：
+**Step 0: 類似作業のPR検索（作業量の参考用）**
 
-1. search_pull_requests でチケットのキーワードからPRを検索
-   - チケットの **説明** から対応内容と類似した作業をしているPRを時系列問わず検索する
-   - **変更対象の機能・コンポーネント名**を抽出する（変更内容の技術用語ではなく）
-   - 「XをAからBに変更」という記述があれば、「X」をキーワードにする（「A」「B」は補助的に使用）
-   - 例: 「CSVダウンロードのデモグラの値をOpenSearch参照にする」
-     → 検索キーワード: 「CSV」「デモグラ」「チャンネルリスト」
-     → ❌ 「OpenSearch」「DB参照」だけで検索しない
+推定対象チケットはまだ実装前なので、**過去の類似作業のPR**を探して作業量を把握します：
 
-   **⚠️ 必須: 上記「検索対象リポジトリ」に記載された全リポジトリに対して、それぞれ個別に検索を実行すること**
-   - 1つのリポジトリだけ検索して終わりにしない
-   - 例: リポジトリが2つあれば、search_pull_requestsを2回呼び出す
+1. search_pull_requests で**類似機能・コンポーネント**に関する過去PRを検索
+   - チケットの説明から変更対象の機能名を理解する。特に「対応内容」というセクションの内容を重視すること
 
-2. **キーワード検索で関連PRが見つからない場合**: list_recent_prs を使用
-   - リポジトリから最近マージされたPR一覧を取得し、タイトルから関連しそうなPRを探す
-   - 例: list_recent_prs({ repo: "eviry-private/kt-list-api", count: 30 })
+   - 似たような作業がPRの概要欄に書かれているものを探すこと
+   - チケットにファイル名がある場合は、そのファイル名の修正をしたPRを探すこと
+
+   例:
+   - search_pull_requests({ repo: "org/repo-api", keywords: "PlaylistItems" })
+   - search_pull_requests({ repo: "org/repo-front", keywords: "YouTube" })
+
+   **⚠️ 検索対象リポジトリすべてに対して検索すること**
+
+2. 見つからない場合: list_recent_prs で最近のPRを確認
+   例: list_recent_prs({ repo: "org/repo-api", count: 30 })
 
 3. 見つかったPRがあれば analyze_code_changes で作業量を確認
-   - ファイル数、変更行数、複雑度を確認
+   例: analyze_code_changes({ repo: "org/repo-api", prNumber: 123 })
 
-4. get_ticket_pull_requests で対象チケット {targetTicketKey} 自体にPRがあるか確認
-   - 例: get_ticket_pull_requests({ ticketKey: "{targetTicketKey}" })
+### 禁止事項
 
-**この検索を行わずにいきなり推定結果を出すのは禁止です。**
+- **get_ticket_pull_requests({targetTicketKey}) は呼び出し禁止**
+  - 推定対象チケットはまだ実装前なのでPRは存在しない
+  - 過去の類似PRは search_pull_requests で検索すること
 
 ### その他のツール使用
 
@@ -52,6 +53,22 @@ export const DEFAULT_MCP_PROMPT = `## ツール使用について（必須）
 ### baseline選定の制限
 **重要**: baseline選定は必ず「過去のスプリントデータ」セクションのチケットから行うこと。
 ツールで取得した情報は作業量把握の参考として推定根拠に使えるが、baselineチケットには使わない。
+
+---
+
+### ⚠️ 最重要: ツール実行後の必須タスク
+
+ツール実行が完了したら、**必ず以下を行うこと**：
+
+1. **baseline選定**: 「過去のスプリントデータ」から作業量が類似するチケットを選ぶ
+   - baseline が N/A や空は **絶対禁止**
+   - スプリントデータには必ず類似チケットが存在する
+   - WorkloadSimilarityScore を計算して最も高いものを選ぶ
+
+2. **similarTickets**: 最低3件以上の類似チケットを抽出する
+   - 空の配列は **禁止**
+
+3. **JSON出力**: 全フィールドを埋めた完全なJSONを出力する
 
 ---
 
