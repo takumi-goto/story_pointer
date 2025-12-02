@@ -1,4 +1,10 @@
-import type { GitHubApiPullRequest, GitHubApiSearchResponse, GitHubApiReview } from "./types";
+import type {
+  GitHubApiPullRequest,
+  GitHubApiSearchResponse,
+  GitHubApiReview,
+  GitHubApiPullRequestFile,
+  GitHubPullRequestWithFiles,
+} from "./types";
 import type { GitHubPullRequest } from "@/types";
 import { calculateDaysBetween } from "@/lib/utils/date";
 
@@ -139,6 +145,88 @@ export class GitHubClient {
     );
 
     return prs.map((pr) => this.mapPullRequest(pr));
+  }
+
+  /**
+   * Get the files changed in a pull request with their diffs
+   */
+  async getPullRequestFiles(
+    owner: string,
+    repo: string,
+    prNumber: number
+  ): Promise<GitHubApiPullRequestFile[]> {
+    return this.fetch<GitHubApiPullRequestFile[]>(
+      `/repos/${owner}/${repo}/pulls/${prNumber}/files?per_page=100`
+    );
+  }
+
+  /**
+   * Get a pull request with its files/diff information
+   */
+  async getPullRequestWithFiles(
+    owner: string,
+    repo: string,
+    prNumber: number
+  ): Promise<GitHubPullRequestWithFiles> {
+    const [pr, files] = await Promise.all([
+      this.fetch<GitHubApiPullRequest>(`/repos/${owner}/${repo}/pulls/${prNumber}`),
+      this.getPullRequestFiles(owner, repo, prNumber),
+    ]);
+
+    return {
+      number: pr.number,
+      url: pr.html_url,
+      title: pr.title,
+      files,
+      additions: pr.additions,
+      deletions: pr.deletions,
+      changedFiles: pr.changed_files,
+    };
+  }
+
+  /**
+   * Get pull requests with files from URLs
+   */
+  async getPullRequestsWithFilesFromUrls(urls: string[]): Promise<GitHubPullRequestWithFiles[]> {
+    const results: GitHubPullRequestWithFiles[] = [];
+
+    for (const url of urls) {
+      const match = url.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/);
+      if (match) {
+        try {
+          const prWithFiles = await this.getPullRequestWithFiles(
+            match[1],
+            match[2],
+            parseInt(match[3])
+          );
+          results.push(prWithFiles);
+        } catch (error) {
+          console.error(`Failed to fetch PR files from ${url}:`, error);
+        }
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * List repositories the token has access to
+   */
+  async listRepositories(perPage: number = 100): Promise<Array<{ fullName: string; private: boolean; updatedAt: string }>> {
+    interface RepoItem {
+      full_name: string;
+      private: boolean;
+      updated_at: string;
+    }
+
+    // Get repositories from the authenticated user
+    const repos = await this.fetch<RepoItem[]>(`/user/repos?per_page=${perPage}&sort=updated&direction=desc`);
+
+    return repos.map((repo) => ({
+      fullName: repo.full_name,
+      private: repo.private,
+      updatedAt: repo.updated_at,
+    }));
   }
 }
 

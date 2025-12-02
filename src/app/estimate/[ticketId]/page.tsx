@@ -19,7 +19,7 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
   const { ticketId } = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { sprintCount, customPrompt } = useSettingsStore();
+  const { sprintCount, customPrompt, mcpPrompt, selectedRepositories } = useSettingsStore();
   const authFetch = useAuthenticatedFetch();
 
   const [result, setResult] = useState<EstimationResult | null>(null);
@@ -29,6 +29,7 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
   const [progress, setProgress] = useState<string>("開始中...");
   const pollCountRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const hasStartedRef = useRef(false);
 
   const ticketKey = searchParams.get("key") || ticketId;
   const ticketSummary = searchParams.get("summary") || "";
@@ -106,6 +107,8 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
           boardId: parseInt(boardId),
           sprintCount,
           customPrompt,
+          mcpPrompt,
+          selectedRepositories,
         }),
         includeGitHub: true,
       });
@@ -137,14 +140,22 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
       setError(err instanceof Error ? err.message : "Estimation failed");
       setIsLoading(false);
     }
-  }, [authFetch, ticketKey, ticketSummary, ticketDescription, boardId, sprintCount, customPrompt, pollJobStatus]);
+  }, [authFetch, ticketKey, ticketSummary, ticketDescription, boardId, sprintCount, customPrompt, mcpPrompt, selectedRepositories, pollJobStatus]);
 
+  // Run estimation on mount - intentionally not including runEstimation in deps
+  // to prevent re-running when the callback changes
   useEffect(() => {
     if (!boardId) {
       setError("ボードIDが指定されていません");
       setIsLoading(false);
       return;
     }
+
+    // Prevent duplicate execution in React Strict Mode
+    if (hasStartedRef.current) {
+      return;
+    }
+    hasStartedRef.current = true;
 
     runEstimation();
 
@@ -153,6 +164,7 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
         abortControllerRef.current.abort();
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketKey, boardId]);
 
   // Track elapsed time during loading
@@ -189,18 +201,38 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
         </div>
 
         {isLoading ? (
-          <Card className="py-12">
-            <div className="flex flex-col items-center gap-4">
-              <Spinner size="lg" />
-              <p className="text-gray-600">
-                AIがストーリーポイントを推定中です...
-              </p>
-              <p className="text-sm text-gray-500">
-                {progress}
-              </p>
-              <p className="text-sm text-gray-500 font-mono">
-                経過時間: {Math.floor(elapsedTime / 60)}:{String(elapsedTime % 60).padStart(2, "0")}
-              </p>
+          <Card className="py-8">
+            <div className="flex flex-col gap-6">
+              {/* Ticket Info */}
+              <div className="border-b border-gray-200 pb-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-sm font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                    {ticketKey}
+                  </span>
+                </div>
+                <h2 className="text-lg font-semibold text-gray-900 mb-2">
+                  {ticketSummary || "チケット"}
+                </h2>
+                {ticketDescription && (
+                  <p className="text-sm text-gray-600 line-clamp-3">
+                    {ticketDescription.substring(0, 300)}{ticketDescription.length > 300 ? "..." : ""}
+                  </p>
+                )}
+              </div>
+
+              {/* Loading Status */}
+              <div className="flex flex-col items-center gap-4">
+                <Spinner size="lg" />
+                <p className="text-gray-600">
+                  AIがストーリーポイントを推定中です...
+                </p>
+                <p className="text-sm text-gray-500">
+                  {progress}
+                </p>
+                <p className="text-sm text-gray-500 font-mono">
+                  経過時間: {Math.floor(elapsedTime / 60)}:{String(elapsedTime % 60).padStart(2, "0")}
+                </p>
+              </div>
             </div>
           </Card>
         ) : error ? (

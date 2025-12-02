@@ -3,9 +3,9 @@ import { createJob, updateJob, generateJobId } from "@/lib/jobs/store";
 import { createJiraClient } from "@/lib/jira/client";
 import { createGitHubClient } from "@/lib/github/client";
 import { createAIClient, getProviderFromModelId, DEFAULT_MODEL_ID } from "@/lib/ai/factory";
+import { GeminiMCPEstimationClient } from "@/lib/ai/clients/gemini-mcp";
 import { getSecret } from "@/lib/secrets/manager";
-import { formatSprintData } from "@/lib/gemini/prompts";
-import type { EstimationContext, SprintDataForPrompt } from "@/lib/ai/types";
+import type { EstimationContext, SprintDataForPrompt, AIEstimationClient } from "@/lib/ai/types";
 import type { EstimationRequest } from "@/types";
 
 // Safe wrapper for getSecret
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, jobId });
     }
 
-    const { ticketKey, ticketSummary, ticketDescription, boardId, sprintCount, customPrompt } = body;
+    const { ticketKey, ticketSummary, ticketDescription, boardId, sprintCount, customPrompt, mcpPrompt, selectedRepositories } = body;
 
     if (!ticketKey || !ticketSummary || !boardId) {
       updateJob(jobId, {
@@ -94,6 +94,9 @@ export async function POST(request: NextRequest) {
     // Use setImmediate/setTimeout to not block the response
     const processJob = async () => {
       try {
+        const startTime = Date.now();
+        const log = (msg: string) => console.log(`[${Date.now() - startTime}ms] ${msg}`);
+
         updateJob(jobId, { progress: "Jiraクライアントを初期化中..." });
 
         const jiraClient = createJiraClient({
@@ -103,90 +106,59 @@ export async function POST(request: NextRequest) {
         });
 
         const githubClient = githubToken ? createGitHubClient({ token: githubToken }) : null;
-        const aiClient = createAIClient({ provider, modelId: aiModelId, apiKey });
 
+        // Use MCP-enabled client for Gemini to enable dynamic tool calling
+        let aiClient: AIEstimationClient;
+        log(`AIプロバイダー: ${provider}, モデル: ${aiModelId}`);
+        if (provider === "gemini") {
+          aiClient = new GeminiMCPEstimationClient({
+            apiKey,
+            modelId: aiModelId,
+            githubToken: githubToken || undefined,
+            jiraClient,
+            githubClient,
+            mcpPrompt,
+            selectedRepositories,
+            onProgress: (msg) => updateJob(jobId, { progress: msg }),
+          });
+        } else {
+          aiClient = createAIClient({ provider, modelId: aiModelId, apiKey });
+        }
+
+        log("クライアント初期化完了");
         updateJob(jobId, { progress: "スプリントデータを取得中..." });
 
-        // Fetch sprint data with tickets
+        // Fetch sprint data with tickets (PR info will be fetched dynamically via MCP)
         const sprints = await jiraClient.getSprintsWithTickets(boardId, sprintCount || 10);
+        log(`スプリント取得完了: ${sprints.length}件`);
 
-        updateJob(jobId, { progress: `${sprints.length}件のスプリントを処理中...` });
+        // Debug: Log sprint names and ticket counts
+        for (const sprint of sprints) {
+          log(`  Sprint: ${sprint.name} (${sprint.tickets.length}件) - End: ${sprint.endDate}`);
+        }
+        const allTicketKeys = sprints.flatMap((s) => s.tickets.map((t) => t.key));
+        log(`  Total tickets in sprint data: ${allTicketKeys.length}件`);
 
-        // Fetch PR data for each ticket if GitHub is configured (parallelized)
-        const sprintDataWithPRs = await Promise.all(
-          sprints.map(async (sprint) => {
-            const prMap = new Map<string, Array<{
-              url: string;
-              fileCount: number;
-              commitCount: number;
-              daysToApprove?: number;
-            }>>();
+        // MCP-enabled AI will dynamically fetch PR/related ticket info using tools
+        updateJob(jobId, { progress: "AIで推定中（MCPツール使用）..." });
+        log("AI推定開始（MCP）");
 
-            if (githubClient) {
-              const ticketPrResults = await Promise.all(
-                sprint.tickets.map(async (ticket) => {
-                  try {
-                    const devInfo = await jiraClient.getDevInfo(ticket.key);
-                    const prUrls: string[] = [];
-
-                    if (devInfo?.detail) {
-                      for (const detail of devInfo.detail) {
-                        for (const repo of detail.repositories) {
-                          for (const pr of repo.pullRequests) {
-                            prUrls.push(pr.url);
-                          }
-                        }
-                      }
-                    }
-
-                    if (prUrls.length > 0) {
-                      const prs = await githubClient.getPullRequestsFromUrls(prUrls);
-                      return {
-                        ticketKey: ticket.key,
-                        prs: prs.map(pr => ({
-                          url: pr.url,
-                          fileCount: pr.fileCount,
-                          commitCount: pr.commitCount,
-                          daysToApprove: pr.daysToApprove,
-                        })),
-                      };
-                    }
-                  } catch (error) {
-                    console.error(`Failed to fetch PRs for ${ticket.key}:`, error);
-                  }
-                  return null;
-                })
-              );
-
-              for (const result of ticketPrResults) {
-                if (result) {
-                  prMap.set(result.ticketKey, result.prs);
-                }
-              }
-            }
-
-            return {
-              name: sprint.name,
-              tickets: sprint.tickets
-                .filter(t => t.key !== ticketKey)
-                .map(t => ({
-                  key: t.key,
-                  summary: t.summary,
-                  description: typeof t.description === "string" ? t.description : undefined,
-                  storyPoints: t.storyPoints,
-                  daysToComplete: t.daysToComplete,
-                })),
-              pullRequests: prMap,
-            };
-          })
-        );
-
-        updateJob(jobId, { progress: "AIで推定中..." });
-
-        // Format data for AI
-        const formattedSprintData: SprintDataForPrompt[] = formatSprintData(sprintDataWithPRs);
+        // Format sprint data (without PR info - MCP will fetch when needed)
+        const formattedSprintData: SprintDataForPrompt[] = sprints.map((sprint) => ({
+          sprintName: sprint.name,
+          tickets: sprint.tickets
+            .filter((t) => t.key !== ticketKey)
+            .map((t) => ({
+              key: t.key,
+              summary: t.summary,
+              description: typeof t.description === "string" ? t.description : undefined,
+              storyPoints: t.storyPoints,
+              daysToComplete: t.daysToComplete,
+            })),
+        }));
 
         // Build estimation context
+        // MCP client will dynamically fetch related ticket info using tools
         const context: EstimationContext = {
           targetTicket: {
             key: ticketKey,
@@ -199,6 +171,7 @@ export async function POST(request: NextRequest) {
 
         // Get estimation from AI
         const result = await aiClient.estimateStoryPoints(context);
+        log("AI推定完了");
 
         updateJob(jobId, {
           status: "completed",

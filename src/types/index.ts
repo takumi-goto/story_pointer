@@ -89,10 +89,26 @@ export interface DiffEvaluation {
   diffReason: string;
 }
 
+export interface WorkloadSimilarityBreakdown {
+  W1_typeMatch: number; // 0-6 (作業タイプ一致度)
+  W2_scopeMatch: number; // 0-2 (影響規模一致度)
+  W3_investigationMatch: number; // 0-1 (調査・リカバリ一致度)
+  W4_prWorkloadMatch: number; // 0-1 (PR作業量一致度)
+  W5_lexicalBonus: number; // 廃止 (常に0)
+}
+
+export interface WorkloadFeatures {
+  changedModulesEstimate: string; // "1" | "2-3" | "4+" | "不明"
+  changedFilesEstimate: string; // "1" | "2-3" | "4+" | "不明"
+  needQueryOrBackfill: string; // "yes" | "no" | "不明"
+}
+
 export interface SimilarTicket {
   key: string;
+  summary?: string;
   points: number;
-  similarityScore: number; // 0-5
+  workloadSimilarityScore: number; // 0-10
+  workloadSimilarityBreakdown: WorkloadSimilarityBreakdown;
   similarityReason: string[];
   diff: DiffEvaluation;
   relatedPRs: RelatedPR[];
@@ -100,8 +116,10 @@ export interface SimilarTicket {
 
 export interface BaselineTicket {
   key: string;
+  summary?: string;
   points: number;
-  similarityScore: number; // 0-5
+  workloadSimilarityScore: number; // 0-10
+  workloadSimilarityBreakdown: WorkloadSimilarityBreakdown;
   similarityReason: string[];
 }
 
@@ -138,6 +156,7 @@ export interface EstimationResult {
   splitSuggestion?: string;
   baseline: BaselineTicket;
   workTypeBreakdown?: WorkTypeBreakdown;
+  workloadFeatures?: WorkloadFeatures;
   aiLeverage?: AILeverage;
   similarTickets: SimilarTicket[];
   pointCandidates: PointCandidate[];
@@ -151,6 +170,8 @@ export interface EstimationRequest {
   boardId: number;
   sprintCount: number;
   customPrompt?: string;
+  mcpPrompt?: string;
+  selectedRepositories?: string[];
 }
 
 // Auth Types
@@ -172,6 +193,7 @@ export interface AppSettings {
   sprintCount: number;
   defaultBoardId?: number;
   customPrompt?: string;
+  sprintNameExample?: string; // e.g., "スプリント86"
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {

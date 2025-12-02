@@ -1,8 +1,16 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { AIEstimationClient, EstimationContext, AIProvider } from "../types";
-import type { EstimationResult, StoryPoint, WorkTypeBreakdown, AILeverage, RaisePermissionCheck } from "@/types";
+import type { EstimationResult, StoryPoint, WorkTypeBreakdown, WorkloadFeatures, WorkloadSimilarityBreakdown, AILeverage, RaisePermissionCheck } from "@/types";
 import { DEFAULT_PROMPT, buildPrompt } from "@/lib/gemini/prompts";
 import { isValidStoryPoint } from "@/lib/utils/fibonacci";
+
+interface GeminiWorkloadSimilarityBreakdown {
+  W1_typeMatch: number;
+  W2_scopeMatch: number;
+  W3_investigationMatch: number;
+  W4_prWorkloadMatch: number;
+  W5_lexicalBonus: number;
+}
 
 interface GeminiEstimationResponse {
   estimatedPoints: number;
@@ -11,8 +19,10 @@ interface GeminiEstimationResponse {
   splitSuggestion?: string;
   baseline: {
     key: string;
+    summary?: string;
     points: number;
-    similarityScore: number;
+    workloadSimilarityScore: number;
+    workloadSimilarityBreakdown: GeminiWorkloadSimilarityBreakdown;
     similarityReason: string[];
   };
   workTypeBreakdown?: {
@@ -23,6 +33,11 @@ interface GeminiEstimationResponse {
     T5_investigation_heavy: number;
     T6_data_backfill_heavy: number;
   };
+  workloadFeatures?: {
+    changedModulesEstimate: string;
+    changedFilesEstimate: string;
+    needQueryOrBackfill: string;
+  };
   aiLeverage?: {
     score: number;
     appliedReduction: string;
@@ -30,8 +45,10 @@ interface GeminiEstimationResponse {
   };
   similarTickets: Array<{
     key: string;
+    summary?: string;
     points: number;
-    similarityScore: number;
+    workloadSimilarityScore: number;
+    workloadSimilarityBreakdown: GeminiWorkloadSimilarityBreakdown;
     similarityReason: string[];
     diff: {
       scopeDiff: number;
@@ -74,11 +91,18 @@ export class GeminiEstimationClient implements AIEstimationClient {
 
   async estimateStoryPoints(context: EstimationContext): Promise<EstimationResult> {
     const basePrompt = context.customPrompt || DEFAULT_PROMPT;
+
+    // Append related ticket context to description if available
+    let fullDescription = context.targetTicket.description;
+    if (context.relatedTicketContext) {
+      fullDescription += "\n\n" + context.relatedTicketContext;
+    }
+
     const prompt = buildPrompt(
       basePrompt,
       context.sprintData,
       context.targetTicket.summary,
-      context.targetTicket.description
+      fullDescription
     );
 
     try {
@@ -92,7 +116,10 @@ export class GeminiEstimationClient implements AIEstimationClient {
         throw new Error("Failed to parse JSON response from Gemini");
       }
 
-      const parsed: GeminiEstimationResponse = JSON.parse(jsonMatch[1]);
+      // Sanitize JSON string to handle various formatting issues
+      const sanitizedJson = this.sanitizeJsonString(jsonMatch[1]);
+
+      const parsed: GeminiEstimationResponse = JSON.parse(sanitizedJson);
 
       // Validate and normalize the response
       const estimatedPoints = this.normalizeStoryPoint(parsed.estimatedPoints);
@@ -100,15 +127,25 @@ export class GeminiEstimationClient implements AIEstimationClient {
       // Build baseline with fallback for missing data
       const baseline = parsed.baseline ? {
         key: parsed.baseline.key || "N/A",
+        summary: parsed.baseline.summary,
         points: parsed.baseline.points || 0,
-        similarityScore: this.normalizeSimilarityScore(parsed.baseline.similarityScore || 0),
+        workloadSimilarityScore: this.normalizeWorkloadSimilarityScore(parsed.baseline.workloadSimilarityScore || 0),
+        workloadSimilarityBreakdown: this.normalizeWorkloadSimilarityBreakdown(parsed.baseline.workloadSimilarityBreakdown),
         similarityReason: parsed.baseline.similarityReason || [],
       } : {
         key: "N/A",
         points: 0,
-        similarityScore: 0,
+        workloadSimilarityScore: 0,
+        workloadSimilarityBreakdown: this.normalizeWorkloadSimilarityBreakdown(undefined),
         similarityReason: [],
       };
+
+      // Build workloadFeatures
+      const workloadFeatures: WorkloadFeatures | undefined = parsed.workloadFeatures ? {
+        changedModulesEstimate: parsed.workloadFeatures.changedModulesEstimate || "不明",
+        changedFilesEstimate: parsed.workloadFeatures.changedFilesEstimate || "不明",
+        needQueryOrBackfill: parsed.workloadFeatures.needQueryOrBackfill || "不明",
+      } : undefined;
 
       // Build workTypeBreakdown
       const workTypeBreakdown: WorkTypeBreakdown | undefined = parsed.workTypeBreakdown ? {
@@ -141,11 +178,14 @@ export class GeminiEstimationClient implements AIEstimationClient {
         splitSuggestion: parsed.splitSuggestion || "",
         baseline,
         workTypeBreakdown,
+        workloadFeatures,
         aiLeverage,
         similarTickets: (parsed.similarTickets || []).filter((ticket) => ticket != null).map((ticket) => ({
           key: ticket.key || "N/A",
+          summary: ticket.summary,
           points: ticket.points || 0,
-          similarityScore: this.normalizeSimilarityScore(ticket.similarityScore || 0),
+          workloadSimilarityScore: this.normalizeWorkloadSimilarityScore(ticket.workloadSimilarityScore || 0),
+          workloadSimilarityBreakdown: this.normalizeWorkloadSimilarityBreakdown(ticket.workloadSimilarityBreakdown),
           similarityReason: ticket.similarityReason || [],
           diff: ticket.diff ? {
             scopeDiff: this.normalizeDiffValue(ticket.diff.scopeDiff || 0),
@@ -203,11 +243,58 @@ export class GeminiEstimationClient implements AIEstimationClient {
     return closest;
   }
 
-  private normalizeSimilarityScore(value: number): number {
-    return Math.min(5, Math.max(0, Math.round(value)));
+  private normalizeWorkloadSimilarityScore(value: number): number {
+    return Math.min(10, Math.max(0, Math.round(value * 10) / 10));
+  }
+
+  private normalizeWorkloadSimilarityBreakdown(breakdown: GeminiWorkloadSimilarityBreakdown | undefined): WorkloadSimilarityBreakdown {
+    if (!breakdown) {
+      return {
+        W1_typeMatch: 0,
+        W2_scopeMatch: 0,
+        W3_investigationMatch: 0,
+        W4_prWorkloadMatch: 0,
+        W5_lexicalBonus: 0,
+      };
+    }
+    return {
+      W1_typeMatch: Math.min(6, Math.max(0, breakdown.W1_typeMatch || 0)),
+      W2_scopeMatch: Math.min(2, Math.max(0, breakdown.W2_scopeMatch || 0)),
+      W3_investigationMatch: Math.min(1, Math.max(0, breakdown.W3_investigationMatch || 0)),
+      W4_prWorkloadMatch: Math.min(1, Math.max(0, breakdown.W4_prWorkloadMatch || 0)),
+      W5_lexicalBonus: 0, // 廃止
+    };
   }
 
   private normalizeDiffValue(value: number): number {
     return Math.min(2, Math.max(-2, Math.round(value)));
+  }
+
+  private sanitizeJsonString(jsonStr: string): string {
+    // Remove control characters except valid whitespace (tab \x09, newline \x0A, carriage return \x0D)
+    // eslint-disable-next-line no-control-regex
+    const controlCharRegex = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g;
+    let result = jsonStr
+      .replace(controlCharRegex, '')
+      // Remove trailing commas before closing brackets/braces
+      .replace(/,(\s*[}\]])/g, '$1');
+
+    // Try to fix common JSON issues
+    try {
+      JSON.parse(result);
+      return result;
+    } catch {
+      // If still invalid, try more aggressive fixes
+      result = result
+        // Fix single quotes to double quotes (for property names and string values)
+        .replace(/'/g, '"')
+        // Fix unquoted property names (simple cases)
+        .replace(/([{,]\s*)(\w+)(\s*:)/g, '$1"$2"$3')
+        // Remove any BOM or invisible characters at the start
+        .replace(/^\uFEFF/, '')
+        .trim();
+
+      return result;
+    }
   }
 }

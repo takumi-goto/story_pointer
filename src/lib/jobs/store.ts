@@ -11,8 +11,14 @@ export interface JobState {
   updatedAt: number;
 }
 
+// Use globalThis to persist across hot reloads in Next.js dev mode
+const globalForJobs = globalThis as unknown as {
+  __jobStore: Map<string, JobState> | undefined;
+};
+
 // Global job store (persists across requests in warm instances)
-const jobs = new Map<string, JobState>();
+const jobs = globalForJobs.__jobStore ?? new Map<string, JobState>();
+globalForJobs.__jobStore = jobs;
 
 // Clean up old jobs (older than 10 minutes)
 function cleanupOldJobs() {

@@ -60,11 +60,14 @@ export default function TicketList({ tickets, boardId }: TicketListProps) {
                 {ticket.summary}
               </h3>
 
-              {ticket.description && (
-                <p className="mt-1 text-sm text-gray-500 line-clamp-2">
-                  {extractTextFromADF(ticket.description)}
-                </p>
-              )}
+              {(() => {
+                const description = extractTextFromADF(ticket.description);
+                return description ? (
+                  <p className="mt-1 text-sm text-gray-500 line-clamp-2">
+                    {description}
+                  </p>
+                ) : null;
+              })()}
 
               <div className="mt-2 flex items-center gap-4 text-xs text-gray-400">
                 <span>作成: {formatDate(ticket.created)}</span>

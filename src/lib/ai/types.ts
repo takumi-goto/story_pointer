@@ -19,6 +19,8 @@ export interface EstimationContext {
   };
   sprintData: SprintDataForPrompt[];
   customPrompt?: string;
+  /** Related ticket context from description references */
+  relatedTicketContext?: string;
 }
 
 export interface SprintDataForPrompt {

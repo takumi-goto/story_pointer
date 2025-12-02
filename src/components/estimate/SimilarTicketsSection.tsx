@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { getPointColor } from "@/lib/utils/fibonacci";
+import { useApiKeysStore } from "@/store/apiKeys";
 import type { BaselineTicket, SimilarTicket, StoryPoint } from "@/types";
 
 interface SimilarTicketsSectionProps {
@@ -8,18 +10,44 @@ interface SimilarTicketsSectionProps {
   similarTickets: SimilarTicket[];
 }
 
-function SimilarityBadge({ score }: { score: number }) {
-  const colors = [
-    "bg-gray-100 text-gray-600",
-    "bg-red-100 text-red-600",
-    "bg-orange-100 text-orange-600",
-    "bg-yellow-100 text-yellow-600",
-    "bg-green-100 text-green-600",
-    "bg-blue-100 text-blue-600",
-  ];
+function JiraTicketLink({ ticketKey, summary, jiraHost }: { ticketKey: string; summary?: string; jiraHost: string | null }) {
+  const url = jiraHost ? `https://${jiraHost}/browse/${ticketKey}` : null;
+
   return (
-    <span className={`text-xs px-2 py-0.5 rounded font-medium ${colors[score] || colors[0]}`}>
-      類似度 {score}/5
+    <div className="flex flex-col">
+      {url ? (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
+        >
+          {ticketKey}
+        </a>
+      ) : (
+        <span className="font-medium">{ticketKey}</span>
+      )}
+      {summary && (
+        <span className="text-xs text-gray-500 truncate max-w-[300px]" title={summary}>
+          {summary}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function WorkloadSimilarityBadge({ score }: { score: number }) {
+  // Score is 0-10, map to color based on ranges
+  let color = "bg-gray-100 text-gray-600";
+  if (score >= 8) color = "bg-blue-100 text-blue-600";
+  else if (score >= 6) color = "bg-green-100 text-green-600";
+  else if (score >= 4) color = "bg-yellow-100 text-yellow-600";
+  else if (score >= 2) color = "bg-orange-100 text-orange-600";
+  else if (score > 0) color = "bg-red-100 text-red-600";
+
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded font-medium ${color}`}>
+      作業量類似度 {score}/10
     </span>
   );
 }
@@ -53,6 +81,44 @@ function DiffTotalBadge({ value }: { value: number }) {
 }
 
 export default function SimilarTicketsSection({ baseline, similarTickets }: SimilarTicketsSectionProps) {
+  const [jiraHost, setJiraHost] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Get jiraHost from store or fetch from env config
+    const fetchJiraHost = async () => {
+      // First try from store
+      const storeHost = useApiKeysStore.getState().jiraHost;
+      if (storeHost) {
+        setJiraHost(storeHost);
+        return;
+      }
+
+      // Fallback: fetch from env config
+      try {
+        const response = await fetch("/api/config");
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.data?.jiraHost) {
+            setJiraHost(result.data.jiraHost);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch env config:", error);
+      }
+    };
+
+    fetchJiraHost();
+
+    // Subscribe to store changes
+    const unsubscribe = useApiKeysStore.subscribe((state) => {
+      if (state.jiraHost) {
+        setJiraHost(state.jiraHost);
+      }
+    });
+
+    return unsubscribe;
+  }, []);
+
   return (
     <div className="space-y-6">
       {/* Baseline Section */}
@@ -60,19 +126,22 @@ export default function SimilarTicketsSection({ baseline, similarTickets }: Simi
         <h4 className="text-sm font-medium text-gray-700 mb-3">ベースラインチケット</h4>
         <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
           <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-blue-800">{baseline.key}</span>
+            <div className="flex items-center gap-3">
+              <JiraTicketLink ticketKey={baseline.key} summary={baseline.summary} jiraHost={jiraHost} />
               <span className={`text-xs px-2 py-0.5 rounded font-medium ${getPointColor(baseline.points as StoryPoint)}`}>
                 {baseline.points} pt
               </span>
-              <SimilarityBadge score={baseline.similarityScore} />
+              <WorkloadSimilarityBadge score={baseline.workloadSimilarityScore} />
             </div>
           </div>
-          {baseline.similarityReason && baseline.similarityReason.length > 0 && (
+          {baseline.similarityReason && (
             <div className="space-y-1">
               <p className="text-xs text-gray-500 font-medium">類似理由:</p>
               <ul className="text-sm text-gray-700 space-y-1">
-                {baseline.similarityReason.map((reason, idx) => (
+                {(Array.isArray(baseline.similarityReason)
+                  ? baseline.similarityReason
+                  : [baseline.similarityReason]
+                ).map((reason, idx) => (
                   <li key={idx} className="flex items-start gap-1">
                     <span className="text-blue-500">•</span>
                     <span>{reason}</span>
@@ -89,28 +158,31 @@ export default function SimilarTicketsSection({ baseline, similarTickets }: Simi
         <div>
           <h4 className="text-sm font-medium text-gray-700 mb-3">類似チケット一覧</h4>
           <div className="space-y-4">
-            {similarTickets.map((ticket, index) => (
+            {similarTickets.map((ticket) => (
               <div
                 key={ticket.key}
                 className="p-4 bg-gray-50 rounded-lg border border-gray-200"
               >
                 <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-800">{ticket.key}</span>
+                  <div className="flex items-center gap-3">
+                    <JiraTicketLink ticketKey={ticket.key} summary={ticket.summary} jiraHost={jiraHost} />
                     <span className={`text-xs px-2 py-0.5 rounded font-medium ${getPointColor(ticket.points as StoryPoint)}`}>
                       {ticket.points} pt
                     </span>
-                    <SimilarityBadge score={ticket.similarityScore} />
+                    <WorkloadSimilarityBadge score={ticket.workloadSimilarityScore} />
                   </div>
                   {ticket.diff && <DiffTotalBadge value={ticket.diff.diffTotal} />}
                 </div>
 
                 {/* Similarity Reasons */}
-                {ticket.similarityReason && ticket.similarityReason.length > 0 && (
+                {ticket.similarityReason && (
                   <div className="mb-3">
                     <p className="text-xs text-gray-500 font-medium mb-1">類似理由:</p>
                     <ul className="text-sm text-gray-600 space-y-0.5">
-                      {ticket.similarityReason.map((reason, idx) => (
+                      {(Array.isArray(ticket.similarityReason)
+                        ? ticket.similarityReason
+                        : [ticket.similarityReason]
+                      ).map((reason, idx) => (
                         <li key={idx} className="flex items-start gap-1">
                           <span className="text-gray-400">•</span>
                           <span>{reason}</span>

@@ -48,6 +48,7 @@ export interface JiraApiSprint {
 export interface JiraApiSprintsResponse {
   maxResults: number;
   startAt: number;
+  total: number;
   isLast: boolean;
   values: JiraApiSprint[];
 }

@@ -68,10 +68,32 @@ export class JiraClient {
   }
 
   async getSprints(boardId: number, count: number = 10): Promise<JiraSprint[]> {
-    const response = await this.fetch<JiraApiSprintsResponse>(
-      `/rest/agile/1.0/board/${boardId}/sprint?state=closed&maxResults=${count}`
+    // First, get total count of closed sprints
+    const initialResponse = await this.fetch<JiraApiSprintsResponse>(
+      `/rest/agile/1.0/board/${boardId}/sprint?state=closed&maxResults=1`
     );
-    return response.values.map((sprint) => ({
+
+    const total = initialResponse.total || 0;
+
+    if (total === 0) {
+      return [];
+    }
+
+    // Calculate startAt to get the most recent sprints
+    // Jira returns oldest first, so we need to skip to near the end
+    const fetchCount = Math.min(count + 5, 50); // Fetch a bit more than needed
+    const startAt = Math.max(0, total - fetchCount);
+
+    const response = await this.fetch<JiraApiSprintsResponse>(
+      `/rest/agile/1.0/board/${boardId}/sprint?state=closed&startAt=${startAt}&maxResults=${fetchCount}`
+    );
+
+    // Sort by ID descending (most recent first) and take the requested count
+    const sortedSprints = response.values
+      .sort((a, b) => b.id - a.id)
+      .slice(0, count);
+
+    return sortedSprints.map((sprint) => ({
       id: sprint.id,
       name: sprint.name,
       state: sprint.state,

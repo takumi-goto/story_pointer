@@ -17,12 +17,24 @@ export function extractTextFromADF(adf: ADFDocument | string | null | undefined)
   // If it's already a string, return it
   if (typeof adf === "string") return adf;
 
-  // If it's not a valid ADF document, return empty
-  if (typeof adf !== "object" || adf.type !== "doc" || !Array.isArray(adf.content)) {
+  // If it's not a valid ADF document, try to handle gracefully
+  if (typeof adf !== "object") {
+    console.warn("[ADF] Unexpected type:", typeof adf);
     return "";
   }
 
-  return extractTextFromNodes(adf.content as ADFNode[]);
+  // Handle ADF document
+  if (adf.type === "doc" && Array.isArray(adf.content)) {
+    return extractTextFromNodes(adf.content as ADFNode[]);
+  }
+
+  // Handle case where content might be at root level (some Jira versions)
+  if (Array.isArray((adf as unknown as { content: ADFNode[] }).content)) {
+    return extractTextFromNodes((adf as unknown as { content: ADFNode[] }).content);
+  }
+
+  console.warn("[ADF] Unrecognized format:", JSON.stringify(adf).substring(0, 200));
+  return "";
 }
 
 function extractTextFromNodes(nodes: ADFNode[]): string {

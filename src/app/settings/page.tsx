@@ -4,7 +4,9 @@ import Header from "@/components/layout/Header";
 import ApiKeySettings from "@/components/settings/ApiKeySettings";
 import SprintSettings from "@/components/settings/SprintSettings";
 import ModelSettings from "@/components/settings/ModelSettings";
+import RepositorySettings from "@/components/settings/RepositorySettings";
 import PromptEditor from "@/components/settings/PromptEditor";
+import MCPPromptEditor from "@/components/settings/MCPPromptEditor";
 
 export default function SettingsPage() {
   return (
@@ -23,7 +25,9 @@ export default function SettingsPage() {
           <ApiKeySettings />
           <SprintSettings />
           <ModelSettings />
+          <RepositorySettings />
           <PromptEditor />
+          <MCPPromptEditor />
         </div>
       </main>
     </div>

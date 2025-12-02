@@ -57,3 +57,24 @@ export interface GitHubApiReview {
   state: "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "DISMISSED" | "PENDING";
   submitted_at: string;
 }
+
+export interface GitHubApiPullRequestFile {
+  sha: string;
+  filename: string;
+  status: "added" | "removed" | "modified" | "renamed" | "copied" | "changed" | "unchanged";
+  additions: number;
+  deletions: number;
+  changes: number;
+  patch?: string;
+  previous_filename?: string;
+}
+
+export interface GitHubPullRequestWithFiles {
+  number: number;
+  url: string;
+  title: string;
+  files: GitHubApiPullRequestFile[];
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+}
