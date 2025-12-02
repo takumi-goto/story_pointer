@@ -299,17 +299,15 @@ export class MCPExecutor {
       console.log(`[MCP]      変更: +${pr.additions}/-${pr.deletions} (${pr.fileCount}ファイル)`);
     });
 
+    // Limit to 5 PRs and reduce data to minimize API payload
     return {
       query,
       count: prs.length,
-      pullRequests: prs.slice(0, 10).map((pr) => ({
+      pullRequests: prs.slice(0, 5).map((pr) => ({
         number: pr.number,
-        url: pr.url,
-        title: pr.title,
-        additions: pr.additions,
-        deletions: pr.deletions,
-        changedFiles: pr.fileCount,
-        mergedAt: pr.mergedAt,
+        title: pr.title.substring(0, 80),
+        lines: `+${pr.additions}/-${pr.deletions}`,
+        files: pr.fileCount,
       })),
     };
   }
@@ -352,17 +350,15 @@ export class MCPExecutor {
       console.log(`[MCP]      マージ日: ${pr.mergedAt}`);
     });
 
+    // Limit data to reduce API payload
     return {
       repo,
       count: mergedPRs.length,
-      pullRequests: mergedPRs.map((pr) => ({
+      pullRequests: mergedPRs.slice(0, 10).map((pr) => ({
         number: pr.number,
-        url: pr.url,
-        title: pr.title,
-        additions: pr.additions,
-        deletions: pr.deletions,
-        changedFiles: pr.fileCount,
-        mergedAt: pr.mergedAt,
+        title: pr.title.substring(0, 80),
+        lines: `+${pr.additions}/-${pr.deletions}`,
+        files: pr.fileCount,
       })),
     };
   }

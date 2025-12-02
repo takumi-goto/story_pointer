@@ -149,12 +149,9 @@ export interface SearchPullRequestsResult {
   count: number;
   pullRequests: Array<{
     number: number;
-    url: string;
     title: string;
-    additions: number;
-    deletions: number;
-    changedFiles: number;
-    mergedAt?: string;
+    lines: string;  // e.g., "+100/-50"
+    files: number;
   }>;
 }
 
@@ -163,11 +160,8 @@ export interface ListRecentPRsResult {
   count: number;
   pullRequests: Array<{
     number: number;
-    url: string;
     title: string;
-    additions: number;
-    deletions: number;
-    changedFiles: number;
-    mergedAt?: string;
+    lines: string;  // e.g., "+100/-50"
+    files: number;
   }>;
 }

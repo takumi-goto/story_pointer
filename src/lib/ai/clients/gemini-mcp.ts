@@ -626,7 +626,7 @@ export class GeminiMCPEstimationClient implements AIEstimationClient {
     const formattedPrompt = basePrompt
       .replace("{ticketSummary}", context.targetTicket.summary)
       .replace("{ticketDescription}", context.targetTicket.description || "説明なし")
-      .replace("{sprintData}", JSON.stringify(compactSprintData, null, 2));
+      .replace("{sprintData}", JSON.stringify(compactSprintData));
 
     return mcpInstructions + formattedPrompt;
   }
