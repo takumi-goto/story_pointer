@@ -27,6 +27,8 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
   const [error, setError] = useState<string | null>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [progress, setProgress] = useState<string>("開始中...");
+  const [logs, setLogs] = useState<Array<{ timestamp: number; message: string }>>([]);
+  const [showLogs, setShowLogs] = useState(false);
   const pollCountRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
   const hasStartedRef = useRef(false);
@@ -62,6 +64,11 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
       return pollJobStatus(jobId);
     }
 
+    // Update logs if available
+    if (data.logs) {
+      setLogs(data.logs);
+    }
+
     if (data.status === "completed") {
       setResult(data.data as EstimationResult);
       setIsLoading(false);
@@ -91,6 +98,8 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
     setIsLoading(true);
     setError(null);
     setProgress("ジョブを開始中...");
+    setLogs([]);
+    setShowLogs(false);
     pollCountRef.current = 0;
 
     try {
@@ -243,6 +252,36 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
                   経過時間: {Math.floor(elapsedTime / 60)}:{String(elapsedTime % 60).padStart(2, "0")}
                 </p>
               </div>
+
+              {/* Logs Section */}
+              {logs.length > 0 && (
+                <div className="border-t border-gray-200 pt-4">
+                  <button
+                    onClick={() => setShowLogs(!showLogs)}
+                    className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-800"
+                  >
+                    <svg
+                      className={`w-4 h-4 transition-transform ${showLogs ? "rotate-90" : ""}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    実行ログ ({logs.length}件)
+                  </button>
+                  {showLogs && (
+                    <div className="mt-2 max-h-60 overflow-y-auto bg-gray-900 text-gray-100 rounded-lg p-3 font-mono text-xs">
+                      {logs.map((log, index) => (
+                        <div key={index} className="py-0.5">
+                          <span className="text-gray-500">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                          <span className="ml-2">{log.message}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </Card>
         ) : error ? (

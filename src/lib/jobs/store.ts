@@ -1,10 +1,16 @@
 // Simple in-memory job store for serverless environments
 // Note: Jobs will be lost on cold starts, but polling will handle retries
 
+export interface LogEntry {
+  timestamp: number;
+  message: string;
+}
+
 export interface JobState {
   id: string;
   status: "pending" | "processing" | "completed" | "error";
   progress?: string;
+  logs?: LogEntry[];
   result?: unknown;
   error?: string;
   createdAt: number;
@@ -66,6 +72,16 @@ export function updateJob(id: string, updates: Partial<JobState>): JobState | un
 
 export function deleteJob(id: string): boolean {
   return jobs.delete(id);
+}
+
+export function appendLog(id: string, message: string): void {
+  const job = jobs.get(id);
+  if (!job) return;
+
+  const logs = job.logs || [];
+  logs.push({ timestamp: Date.now(), message });
+
+  jobs.set(id, { ...job, logs, updatedAt: Date.now() });
 }
 
 export function generateJobId(): string {

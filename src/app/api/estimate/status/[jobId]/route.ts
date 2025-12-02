@@ -49,5 +49,6 @@ export async function GET(
     success: true,
     status: job.status,
     progress: job.progress,
+    logs: job.logs,
   });
 }

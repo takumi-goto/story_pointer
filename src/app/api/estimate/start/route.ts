@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createJob, updateJob, generateJobId } from "@/lib/jobs/store";
+import { createJob, updateJob, generateJobId, appendLog } from "@/lib/jobs/store";
 import { createJiraClient } from "@/lib/jira/client";
 import { createGitHubClient } from "@/lib/github/client";
 import { createAIClient, getProviderFromModelId, DEFAULT_MODEL_ID } from "@/lib/ai/factory";
@@ -97,7 +97,11 @@ export async function POST(request: NextRequest) {
     const processJob = async () => {
       try {
         const startTime = Date.now();
-        const log = (msg: string) => console.log(`[${Date.now() - startTime}ms] ${msg}`);
+        const log = (msg: string) => {
+          const logMsg = `[${Date.now() - startTime}ms] ${msg}`;
+          console.log(logMsg);
+          appendLog(jobId, logMsg);
+        };
 
         updateJob(jobId, { progress: "Jiraクライアントを初期化中..." });
 
@@ -122,6 +126,7 @@ export async function POST(request: NextRequest) {
             mcpPrompt,
             selectedRepositories,
             onProgress: (msg) => updateJob(jobId, { progress: msg }),
+            onLog: (msg) => appendLog(jobId, msg),
           });
         } else {
           aiClient = createAIClient({ provider, modelId: aiModelId, apiKey });
@@ -189,9 +194,11 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    // Start processing - await to ensure it completes before response
-    // Cloud Run may terminate the container after response, so we need to wait
-    await processJob();
+    // Start processing in background
+    // Note: Response is returned immediately, job continues asynchronously
+    processJob().catch((error) => {
+      console.error("[processJob] Unhandled error:", error);
+    });
 
     return NextResponse.json({ success: true, jobId });
   } catch (error) {

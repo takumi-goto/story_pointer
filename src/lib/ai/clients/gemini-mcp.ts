@@ -246,6 +246,7 @@ export interface GeminiMCPClientConfig {
   mcpPrompt?: string;
   selectedRepositories?: string[];
   onProgress?: (message: string) => void;
+  onLog?: (message: string) => void;
 }
 
 export class GeminiMCPEstimationClient implements AIEstimationClient {
@@ -258,6 +259,7 @@ export class GeminiMCPEstimationClient implements AIEstimationClient {
   private mcpPrompt?: string;
   private selectedRepositories: string[];
   private onProgress?: (message: string) => void;
+  private onLog?: (message: string) => void;
 
   constructor(config: GeminiMCPClientConfig) {
     this.modelId = config.modelId;
@@ -270,6 +272,12 @@ export class GeminiMCPEstimationClient implements AIEstimationClient {
     this.mcpPrompt = config.mcpPrompt;
     this.selectedRepositories = config.selectedRepositories || [];
     this.onProgress = config.onProgress;
+    this.onLog = config.onLog;
+  }
+
+  private log(message: string): void {
+    console.log(message);
+    this.onLog?.(message);
   }
 
   /**
@@ -314,7 +322,10 @@ export class GeminiMCPEstimationClient implements AIEstimationClient {
   }
 
   async estimateStoryPoints(context: EstimationContext): Promise<EstimationResult> {
-    console.log(`[Gemini] 推定開始 - モデル: ${this.modelId}`);
+    const startTime = Date.now();
+    const elapsed = () => `${Date.now() - startTime}ms`;
+
+    this.log(`[Gemini] 推定開始 - モデル: ${this.modelId}`);
     this.onProgress?.(`AIモデル: ${this.modelId}`);
 
     let mcpTools: MCPTool[] = [];
@@ -324,7 +335,9 @@ export class GeminiMCPEstimationClient implements AIEstimationClient {
     if (this.githubToken) {
       try {
         this.onProgress?.("GitHub MCPサーバーに接続中...");
+        this.log(`[Gemini][${elapsed()}] MCP接続開始`);
         const client = await createGitHubMCPClient(this.githubToken);
+        this.log(`[Gemini][${elapsed()}] MCP接続完了`);
         if (client) {
           this.mcpClient = client;
           mcpTools = await this.mcpClient.listTools();
@@ -351,6 +364,7 @@ export class GeminiMCPEstimationClient implements AIEstimationClient {
 
     // Build initial prompt with MCP instructions
     const systemPrompt = this.buildMCPPrompt(context, mcpTools);
+    this.log(`[Gemini][${elapsed()}] プロンプト構築完了 (${systemPrompt.length}文字)`);
 
     // Start chat with function calling enabled
     const chat = model.startChat({
@@ -358,7 +372,9 @@ export class GeminiMCPEstimationClient implements AIEstimationClient {
     });
 
     // Initial message with retry logic
+    this.log(`[Gemini][${elapsed()}] 初回API呼び出し開始`);
     let response = await this.sendMessageWithRetry(chat, systemPrompt);
+    this.log(`[Gemini][${elapsed()}] 初回API呼び出し完了`);
     let result = response.response;
     let iterations = 0;
     let totalToolCalls = 0;
@@ -375,7 +391,7 @@ export class GeminiMCPEstimationClient implements AIEstimationClient {
 
         // Check if we've exceeded total tool call limit
         if (totalToolCalls >= MAX_TOTAL_TOOL_CALLS) {
-          console.log(`[MCP] Total tool call limit reached (${MAX_TOTAL_TOOL_CALLS}), skipping remaining calls`);
+          this.log(`[MCP] Total tool call limit reached (${MAX_TOTAL_TOOL_CALLS}), skipping remaining calls`);
           this.onProgress?.(`ツール呼び出し上限に達しました（${MAX_TOTAL_TOOL_CALLS}回）`);
           break;
         }
@@ -385,13 +401,15 @@ export class GeminiMCPEstimationClient implements AIEstimationClient {
         const functionCalls = allFunctionCalls.slice(0, Math.min(MAX_TOOL_CALLS_PER_ITERATION, remainingCalls));
 
         if (allFunctionCalls.length > functionCalls.length) {
-          console.log(`[MCP] Limiting tool calls: ${allFunctionCalls.length} requested, ${functionCalls.length} executed`);
+          this.log(`[MCP] Limiting tool calls: ${allFunctionCalls.length} requested, ${functionCalls.length} executed`);
         }
 
         this.onProgress?.(`MCPツール実行中: ${functionCalls.map(fc => fc.name).join(", ")}`);
+        this.log(`[Gemini][${elapsed()}] ツール実行開始: ${functionCalls.map(fc => fc.name).join(", ")}`);
 
         // Execute all function calls in parallel
         totalToolCalls += functionCalls.length;
+        const toolStartTime = Date.now();
         const functionResponses: Part[] = await Promise.all(
           functionCalls.map(async (call) => {
             try {
@@ -412,7 +430,7 @@ export class GeminiMCPEstimationClient implements AIEstimationClient {
                 );
               }
 
-              console.log(`[MCP] Tool ${call.name} result:`, JSON.stringify(toolResult).substring(0, 200));
+              this.log(`[MCP] Tool ${call.name} result: ${JSON.stringify(toolResult).substring(0, 200)}`);
 
               return {
                 functionResponse: {
@@ -421,7 +439,7 @@ export class GeminiMCPEstimationClient implements AIEstimationClient {
                 },
               };
             } catch (error) {
-              console.error(`[MCP] Tool ${call.name} error:`, error);
+              this.log(`[MCP] Tool ${call.name} error: ${error}`);
               return {
                 functionResponse: {
                   name: call.name,
@@ -431,9 +449,12 @@ export class GeminiMCPEstimationClient implements AIEstimationClient {
             }
           })
         );
+        this.log(`[Gemini][${elapsed()}] ツール実行完了 (${Date.now() - toolStartTime}ms)`);
 
         // Send function results back to the model with retry logic
+        this.log(`[Gemini][${elapsed()}] ツール結果をGeminiに送信中...`);
         response = await this.sendMessageWithRetry(chat, functionResponses);
+        this.log(`[Gemini][${elapsed()}] Gemini応答受信完了`);
         result = response.response;
         iterations++;
       }
