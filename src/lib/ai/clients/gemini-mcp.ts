@@ -390,56 +390,47 @@ export class GeminiMCPEstimationClient implements AIEstimationClient {
 
         this.onProgress?.(`MCPツール実行中: ${functionCalls.map(fc => fc.name).join(", ")}`);
 
-        // Execute all function calls with rate limiting
-        const functionResponses: Part[] = [];
-        for (let i = 0; i < functionCalls.length; i++) {
-          const call = functionCalls[i];
-          totalToolCalls++;
+        // Execute all function calls in parallel
+        totalToolCalls += functionCalls.length;
+        const functionResponses: Part[] = await Promise.all(
+          functionCalls.map(async (call) => {
+            try {
+              let toolResult: unknown;
 
-          // Add delay between tool calls to avoid rate limiting
-          if (i > 0) {
-            await sleep(TOOL_CALL_DELAY_MS);
-          }
+              if (usingRealMCP && this.mcpClient) {
+                // Use real MCP server
+                const mcpResult = await this.mcpClient.callTool(
+                  call.name,
+                  call.args as Record<string, unknown>
+                );
+                toolResult = mcpResult.content.map(c => c.text || JSON.stringify(c)).join("\n");
+              } else {
+                // Fallback to local executor
+                toolResult = await this.mcpExecutor.execute(
+                  call.name,
+                  call.args as Record<string, unknown>
+                );
+              }
 
-          try {
-            let toolResult: unknown;
+              console.log(`[MCP] Tool ${call.name} result:`, JSON.stringify(toolResult).substring(0, 200));
 
-            if (usingRealMCP && this.mcpClient) {
-              // Use real MCP server
-              const mcpResult = await this.mcpClient.callTool(
-                call.name,
-                call.args as Record<string, unknown>
-              );
-              toolResult = mcpResult.content.map(c => c.text || JSON.stringify(c)).join("\n");
-            } else {
-              // Fallback to local executor
-              toolResult = await this.mcpExecutor.execute(
-                call.name,
-                call.args as Record<string, unknown>
-              );
+              return {
+                functionResponse: {
+                  name: call.name,
+                  response: { result: toolResult },
+                },
+              };
+            } catch (error) {
+              console.error(`[MCP] Tool ${call.name} error:`, error);
+              return {
+                functionResponse: {
+                  name: call.name,
+                  response: { error: String(error) },
+                },
+              };
             }
-
-            console.log(`[MCP] Tool ${call.name} result:`, JSON.stringify(toolResult).substring(0, 200));
-
-            functionResponses.push({
-              functionResponse: {
-                name: call.name,
-                response: { result: toolResult },
-              },
-            });
-          } catch (error) {
-            console.error(`[MCP] Tool ${call.name} error:`, error);
-            functionResponses.push({
-              functionResponse: {
-                name: call.name,
-                response: { error: String(error) },
-              },
-            });
-          }
-        }
-
-        // Add delay before sending results to avoid rate limiting
-        await sleep(TOOL_CALL_DELAY_MS);
+          })
+        );
 
         // Send function results back to the model with retry logic
         response = await this.sendMessageWithRetry(chat, functionResponses);
