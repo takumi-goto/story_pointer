@@ -54,7 +54,7 @@ export function getPointColor(point: StoryPoint): string {
     8: "bg-orange-100 text-orange-800",
     13: "bg-red-100 text-red-800",
   };
-  return colors[point];
+  return colors[point] || "bg-gray-100 text-gray-800";
 }
 
 export function getPointDescription(point: StoryPoint): string {
