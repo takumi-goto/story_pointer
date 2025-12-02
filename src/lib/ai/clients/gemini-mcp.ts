@@ -31,7 +31,7 @@ import type { GitHubClient } from "@/lib/github/client";
 
 const MAX_TOOL_ITERATIONS = 10;
 const MAX_TOOL_CALLS_PER_ITERATION = 5; // Limit parallel tool calls per iteration
-const MAX_TOTAL_TOOL_CALLS = 8; // Total tool calls limit across all iterations
+const MAX_TOTAL_TOOL_CALLS = 12; // Total tool calls limit across all iterations (allow 2 repos × 4 calls each + extras)
 const TOOL_CALL_DELAY_MS = 1000; // Delay between tool calls to avoid rate limiting
 const MAX_RETRY_ATTEMPTS = 3;
 const INITIAL_RETRY_DELAY_MS = 5000; // 5 seconds
@@ -68,6 +68,8 @@ function isRateLimitError(error: unknown): boolean {
 /**
  * Check if error is a quota exceeded error (not temporary rate limit)
  * Quota exceeded errors should not be retried - user needs to change model or wait longer
+ *
+ * Note: "PerMinute" quotas are rate limits, not true quota exceeded errors
  */
 function isQuotaExceededError(error: unknown): boolean {
   let message: string | undefined;
@@ -82,7 +84,12 @@ function isQuotaExceededError(error: unknown): boolean {
   }
 
   if (message) {
-    // Check for quota exceeded indicators
+    // If it's a per-minute rate limit, treat as temporary (can retry)
+    if (message.includes("PerMinute") || message.includes("per minute")) {
+      return false;
+    }
+
+    // Check for true quota exceeded indicators (billing/plan limits)
     return (
       message.includes("exceeded your current quota") ||
       message.includes("Quota exceeded") ||
@@ -108,9 +115,23 @@ function extractRetryDelay(error: unknown): number | null {
   }
 
   if (message) {
+    // Match patterns like "retry in 107.661096ms" or "retry in 5s" or "retry in 30"
+    const msMatch = message.match(/retry in (\d+(?:\.\d+)?)\s*ms/i);
+    if (msMatch) {
+      return Math.ceil(parseFloat(msMatch[1])); // Already in ms
+    }
+
+    const secMatch = message.match(/retry in (\d+(?:\.\d+)?)\s*s(?:ec)?/i);
+    if (secMatch) {
+      return Math.ceil(parseFloat(secMatch[1]) * 1000); // Convert to ms
+    }
+
+    // Fallback: assume seconds if no unit
     const match = message.match(/retry in (\d+(?:\.\d+)?)/i);
     if (match) {
-      return Math.ceil(parseFloat(match[1]) * 1000); // Convert to ms
+      const value = parseFloat(match[1]);
+      // If value is very large (>1000), it's likely already ms
+      return value > 1000 ? Math.ceil(value) : Math.ceil(value * 1000);
     }
   }
   return null;

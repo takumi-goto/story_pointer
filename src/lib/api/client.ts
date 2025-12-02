@@ -80,6 +80,7 @@ export function useAuthenticatedFetch() {
 
     // Debug: Log API key status
     console.log("[useAuthenticatedFetch] geminiApiKey:", apiKeysState.geminiApiKey ? "SET" : "NOT SET");
+    console.log("[useAuthenticatedFetch] aiModelId:", settingsState.aiModelId);
 
     const { includeGitHub, ...fetchOptions } = options;
 

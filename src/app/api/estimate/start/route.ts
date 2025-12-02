@@ -30,7 +30,9 @@ export async function POST(request: NextRequest) {
     const jiraEmail = request.headers.get("X-Jira-Email") || (await safeGetSecret("JIRA_EMAIL"));
     const jiraApiToken = request.headers.get("X-Jira-Api-Token") || (await safeGetSecret("JIRA_API_TOKEN"));
     const githubToken = request.headers.get("X-GitHub-Token") || (await safeGetSecret("GITHUB_TOKEN"));
-    const aiModelId = request.headers.get("X-AI-Model-Id") || DEFAULT_MODEL_ID;
+    const aiModelIdFromHeader = request.headers.get("X-AI-Model-Id");
+    const aiModelId = aiModelIdFromHeader || DEFAULT_MODEL_ID;
+    console.log(`[Estimate Start] X-AI-Model-Id header: ${aiModelIdFromHeader}, using: ${aiModelId}`);
 
     // AI API Keys from headers, fallback to env
     const geminiApiKeyFromHeader = request.headers.get("X-Gemini-Api-Key");

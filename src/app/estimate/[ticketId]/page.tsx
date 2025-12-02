@@ -94,6 +94,10 @@ function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) 
     pollCountRef.current = 0;
 
     try {
+      // Debug: Log current settings
+      const currentSettings = useSettingsStore.getState();
+      console.log("[runEstimation] Current aiModelId:", currentSettings.aiModelId);
+
       // Start the estimation job
       const startResponse = await authFetch("/api/estimate/start", {
         method: "POST",
