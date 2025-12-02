@@ -13,7 +13,7 @@ import { useAuthenticatedFetch } from "@/lib/api/client";
 import type { EstimationResult } from "@/types";
 
 const POLL_INTERVAL = 2000; // 2 seconds
-const MAX_POLL_ATTEMPTS = 150; // 5 minutes max (150 * 2s)
+const MAX_POLL_ATTEMPTS = 300; // 10 minutes max (300 * 2s)
 
 function EstimateContent({ params }: { params: Promise<{ ticketId: string }> }) {
   const { ticketId } = use(params);

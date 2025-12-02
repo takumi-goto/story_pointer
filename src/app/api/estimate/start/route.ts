@@ -189,8 +189,9 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    // Start processing without blocking
-    processJob();
+    // Start processing - await to ensure it completes before response
+    // Cloud Run may terminate the container after response, so we need to wait
+    await processJob();
 
     return NextResponse.json({ success: true, jobId });
   } catch (error) {
