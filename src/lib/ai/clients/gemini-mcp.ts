@@ -30,6 +30,8 @@ import type { JiraClient } from "@/lib/jira/client";
 import type { GitHubClient } from "@/lib/github/client";
 
 const MAX_TOOL_ITERATIONS = 10;
+const MAX_TOOL_CALLS_PER_ITERATION = 5; // Limit parallel tool calls per iteration
+const MAX_TOTAL_TOOL_CALLS = 8; // Total tool calls limit across all iterations
 const TOOL_CALL_DELAY_MS = 1000; // Delay between tool calls to avoid rate limiting
 const MAX_RETRY_ATTEMPTS = 3;
 const INITIAL_RETRY_DELAY_MS = 5000; // 5 seconds
@@ -306,15 +308,31 @@ export class GeminiMCPEstimationClient implements AIEstimationClient {
     let response = await this.sendMessageWithRetry(chat, systemPrompt);
     let result = response.response;
     let iterations = 0;
+    let totalToolCalls = 0;
 
     // Tool calling loop
     try {
       while (iterations < MAX_TOOL_ITERATIONS) {
-        const functionCalls = this.extractFunctionCalls(result);
+        const allFunctionCalls = this.extractFunctionCalls(result);
 
-        if (functionCalls.length === 0) {
+        if (allFunctionCalls.length === 0) {
           // No more function calls, we have the final response
           break;
+        }
+
+        // Check if we've exceeded total tool call limit
+        if (totalToolCalls >= MAX_TOTAL_TOOL_CALLS) {
+          console.log(`[MCP] Total tool call limit reached (${MAX_TOTAL_TOOL_CALLS}), skipping remaining calls`);
+          this.onProgress?.(`ツール呼び出し上限に達しました（${MAX_TOTAL_TOOL_CALLS}回）`);
+          break;
+        }
+
+        // Limit function calls per iteration
+        const remainingCalls = MAX_TOTAL_TOOL_CALLS - totalToolCalls;
+        const functionCalls = allFunctionCalls.slice(0, Math.min(MAX_TOOL_CALLS_PER_ITERATION, remainingCalls));
+
+        if (allFunctionCalls.length > functionCalls.length) {
+          console.log(`[MCP] Limiting tool calls: ${allFunctionCalls.length} requested, ${functionCalls.length} executed`);
         }
 
         this.onProgress?.(`MCPツール実行中: ${functionCalls.map(fc => fc.name).join(", ")}`);
@@ -323,6 +341,7 @@ export class GeminiMCPEstimationClient implements AIEstimationClient {
         const functionResponses: Part[] = [];
         for (let i = 0; i < functionCalls.length; i++) {
           const call = functionCalls[i];
+          totalToolCalls++;
 
           // Add delay between tool calls to avoid rate limiting
           if (i > 0) {

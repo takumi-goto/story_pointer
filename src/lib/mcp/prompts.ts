@@ -18,24 +18,25 @@ export const DEFAULT_MCP_PROMPT = `## ツール使用について（必須）
 
 ### 必須手順（この順番で必ず実行すること）
 
+**⚠️ 重要: ツール呼び出し回数制限**
+- search_pull_requests は **最大3回まで**（リポジトリ×キーワードの組み合わせで計3回）
+- 全ツール合計で **最大6回まで**
+- 効率的に検索すること。同じ検索を繰り返さない。
+
 **Step 0: 関連PR検索（必須・最初に実行）**
 推定を始める前に、まず以下を必ず実行してください：
 
-1. search_pull_requests でチケットのキーワードからPRを検索
-   - チケットの **タイトルと説明** から主要キーワード（日本語OK）を抽出して検索
-   - 技術用語、機能名、コンポーネント名などを優先的に抽出
-   - 上記の「検索対象リポジトリ」それぞれに対して検索を実行すること
+1. search_pull_requests でチケットのキーワードからPRを検索（**最大3回まで**）
+   - チケットのタイトルから **1つの主要キーワード** を抽出して検索
+   - 最も関連性の高いリポジトリ **1〜2個** に絞って検索
    - 例: search_pull_requests({ keywords: "CSV ダウンロード", repo: "eviry-private/kt-list-api" })
 
-2. **キーワード検索で関連PRが見つからない場合**: list_recent_prs を使用
-   - リポジトリから最近マージされたPR一覧を取得し、タイトルから関連しそうなPRを探す
-   - 例: list_recent_prs({ repo: "eviry-private/kt-list-api", count: 30 })
+2. **キーワード検索で関連PRが見つからない場合のみ**: list_recent_prs を使用
+   - 例: list_recent_prs({ repo: "eviry-private/kt-list-api", count: 20 })
 
-3. 見つかったPRがあれば analyze_code_changes で作業量を確認
-   - ファイル数、変更行数、複雑度を確認
+3. 見つかったPRがあれば analyze_code_changes で作業量を確認（**最大1回**）
 
 4. get_ticket_pull_requests で対象チケット {targetTicketKey} 自体にPRがあるか確認
-   - 例: get_ticket_pull_requests({ ticketKey: "{targetTicketKey}" })
 
 **この検索を行わずにいきなり推定結果を出すのは禁止です。**
 
